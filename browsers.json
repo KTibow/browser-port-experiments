@@ -121,6 +121,23 @@
       }
     },
     {
+      "id": "9front",
+      "name": "9front",
+      "engine": "Mothra / NetSurf",
+      "era": "2011 - present",
+      "blurb": "9front is an actively-developed fork of Plan 9 from Bell Labs, the research OS that grew out of Unix. It ships the native Mothra web browser (and a port of NetSurf), resumed here from a saved state. A genuinely unusual engine running in your tab.",
+      "hint": "Right-click the desktop to open the menu; launch the 'mothra' web browser (or NetSurf). Networking is configured at boot.",
+      "highlight": true,
+      "tested": "boots",
+      "config": {
+        "memory_size": 134217728,
+        "hda": { "url": "9front-10931.386/.iso", "size": 489453568, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
+        "state": { "url": "9front_state-v3.bin.zst" },
+        "acpi": true,
+        "net_device_type": "ne2k"
+      }
+    },
+    {
       "id": "slitaz",
       "name": "SliTaz GNU/Linux",
       "engine": "Midori / TazWeb (WebKitGTK)",

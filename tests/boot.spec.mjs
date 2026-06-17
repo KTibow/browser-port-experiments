@@ -24,6 +24,10 @@ const stateOses = [
   { id: "haiku", minWidth: 600 },       // WebPositive (WebKit)
   { id: "reactos", minWidth: 600 },     // IE-compatible shell (virtio NIC)
   { id: "serenityos", minWidth: 600, minColors: 20 }, // Ladybird (LibWeb); streams zstd parts
+  // 9front (Plan 9 fork): restores to the rio desktop (1024x768) with a term%
+  // rc shell. The desktop is mostly grey + a white window, so it has few colors
+  // (~20); we assert on the resolution + a low color floor.
+  { id: "9front", minWidth: 800, minColors: 10 }, // Mothra / NetSurf (Plan 9)
 ];
 
 for (const os of stateOses) {

@@ -75,6 +75,7 @@ the badge on the landing page.
 | haiku | WebPositive (WebKit) + Links | ✅ boots | restores from state; CI `@state`; run `networking.sh` |
 | reactos | IE-compatible shell | ✅ boots | restores from state in ~2s; CI `@state`; virtio NIC, acpi; v0.4.15 desktop verified |
 | serenityos | Ladybird (LibWeb) | ✅ boots | **fixed**: parts are zstd (`serenity-v3/.img.zst`, not `.img`); CI `@state`; desktop + terminal verified |
+| 9front | Mothra + NetSurf (Plan 9) | ✅ boots | restores from state in ~2s; CI `@state`; rio desktop + `term%` rc shell verified; ne2k, acpi |
 | slitaz | Midori + TazWeb (WebKitGTK) | ✅ boots | live boot (ISO as hda); auto-boots through lang menu to a 1280×720 Openbox desktop in ~135s; **DHCP-over-Wisp auto-connects**; CI `@livecd`; Midori+TazWeb confirmed in ISO rootfs |
 | android4 | AOSP Browser (WebKit) | ✅ boots | Android-x86 4.4 KitKat; full boot ~4-5min (streams ~250 MB), reaches the real launcher; Wisp connects; CI `@slow` (440s budget) |
 | dsl | Dillo + Firefox | ✅ boots | live CD; Syslinux waits at `boot:` so registry uses `autokeys` to press Enter; X11 in ~50s; DHCP-over-Wisp connected; CI `@cdrom` |
@@ -202,3 +203,25 @@ single relay going unless there's clearly parallelizable, conflict-free work.
   runner `CI=true`, so kill any manual `serve.mjs` first. Added `scripts/watch.mjs`
   (boot-timeline logger + interval screenshots) for slow guests. `@smoke` still
   green (3 passed). Next: more browsers (Task 4 has candidates left) or Task 3/5.
+- 2026-06-17 — **worker (cont.)**: **Completed** the 9front add (now 11 browsers,
+  7 verified). Verified by reading the screenshot: 9front restores from its state
+  image in ~2s to the real Plan 9 **rio** desktop — grey background, the classic
+  cut/snarf/paste menu widget top-left, and a working `term%` **rc** shell window
+  (1024×768). Set `tested: "boots"` and added a `@state` boot test (passes in
+  2.4s); `@smoke` still green (3 passed). **Gotcha learned:** rio uses
+  *focus-follows-mouse*, and our canvas mouse is relative-PS/2 (same gotcha that
+  blocks GUI automation elsewhere), so `keyboard_send_text` doesn't reach the
+  term window unless the pointer is parked over it — couldn't reliably home the
+  cursor, so in-guest mothra/networking verification stays manual (Task 3), like
+  the other GUI guests. Also: the public V86 wrapper exposes mouse moves only via
+  `emulator.bus.send("mouse-delta",[dx,dy])` / `"mouse-click"` (there's no public
+  `mouse_send_delta` method). Next: more browsers (Task 4: TinyCore, FreeBSD,
+  Windows 95, Redox) or Task 3/5.
+- 2026-06-17 — **worker**: claimed **Task 4** (add more browsers). Picked **9front**
+  (Plan 9 fork; ships Mothra + NetSurf) because it has a state image — the proven,
+  low-risk @state restore pattern — and is a genuinely useful, actively-developed
+  OS. (Chose Task 4 over the queue-top Task 3 because Task 3's GUI automation is
+  blocked by the relative-mouse gotcha, there's no confirmed serial+browser guest,
+  and the existing @network test already proves E2E Wisp fetch.) Verified CDN
+  parts + state resolve (206, ACAO:*) with no Referer; ne2k NIC, acpi, 128 MB.
+  Probing a boot + reading the screenshot before flipping `tested`.

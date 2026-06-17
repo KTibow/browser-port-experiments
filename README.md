@@ -27,6 +27,7 @@ run their *native* browsers — so we get real, feature-complete engines:
 - **Haiku** → WebPositive (WebKit)
 - **ReactOS** → Windows-compatible shell
 - **SerenityOS** → Ladybird (independent LibWeb engine)
+- **9front** (Plan 9 fork) → Mothra + NetSurf
 - **SliTaz GNU/Linux** → Midori + TazWeb (WebKitGTK)
 - **Android 4.4 (KitKat)** → AOSP Browser (WebKit)
 - **Damn Small Linux** → Dillo + Firefox
@@ -76,7 +77,7 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
 
 - `@smoke` — landing page + KolibriOS graphical boot (no flaky deps; gates deploy)
 - `@state` — saved-state OSes resume a booted desktop (Win98/2000/ME, Haiku,
-  ReactOS, SerenityOS)
+  ReactOS, SerenityOS, 9front)
 - `@cdrom` — Damn Small Linux boots its live CD into the X11 desktop
 - `@livecd` — SliTaz live-boots to its graphical Openbox desktop (Midori/WebKit)
 - `@slow` — Android 4.4 boots to the launcher (~4-5 min; streams ~250 MB)
