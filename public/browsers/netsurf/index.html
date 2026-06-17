@@ -1,25 +1,64 @@
 <!doctype html>
-<meta charset="utf-8" />
-<title>NetSurf framebuffer WASM probe</title>
-<style>
-  body { margin: 0; font: 15px system-ui, sans-serif; background: #10131a; color: #f3f6fb; }
-  main { max-width: 960px; margin: 0 auto; padding: 24px; }
-  pre { min-height: 12rem; padding: 16px; overflow: auto; background: #05070a; border: 1px solid #2b3342; border-radius: 10px; }
-  .note { color: #b8c0cc; }
-</style>
-<main>
-  <h1>NetSurf framebuffer WASM probe</h1>
-  <p class="note">Offline framebuffer build: curl, JS, PNG/JPEG/WebP/SVG are disabled. The current libnsfb surface is RAM, so this proves wasm startup/linkage rather than canvas presentation.</p>
-  <pre id="log">Loading nsfb.js…</pre>
-</main>
-<script>
-  const log = document.querySelector('#log');
-  window.Module = {
-    arguments: ['-f', 'ram', 'about:welcome'],
-    print: (text) => { log.textContent += `\n${text}`; },
-    printErr: (text) => { log.textContent += `\n[stderr] ${text}`; },
-    locateFile: (path) => path,
-    onRuntimeInitialized: () => { log.textContent += '\nRuntime initialised.'; },
-  };
-</script>
-<script src="./nsfb.js"></script>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NetSurf framebuffer WASM probe</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+      body { margin: 0; padding: 1rem; }
+      main { max-width: 960px; margin: 0 auto; }
+      a { color: #67e8f9; }
+      .panel { background: #111827; border: 1px solid #334155; border-radius: 16px; padding: 1rem; margin: 1rem 0; }
+      code, pre { background: #020617; border-radius: 8px; }
+      code { padding: 0.1rem 0.3rem; }
+      pre { min-height: 12rem; overflow: auto; padding: 1rem; white-space: pre-wrap; }
+      .status { display: inline-block; border-radius: 999px; background: #164e63; color: #a5f3fc; padding: 0.35rem 0.75rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="../..">← Browser Port Experiments</a></p>
+      <h1>NetSurf framebuffer WASM probe</h1>
+      <p class="status" id="status">loading nsfb.js</p>
+      <section class="panel">
+        <p>
+          This is a reproducible NetSurf WASM artifact from <code>ports/netsurf/</code>.
+          It is the framebuffer frontend linked against libnsfb's RAM surface, so it does not yet paint to a canvas.
+          A successor should replace the RAM surface with an SDL2/canvas or custom JavaScript surface.
+        </p>
+        <p>Command line passed to NetSurf: <code>-f ram -w 640 -h 480 about:blank</code></p>
+      </section>
+      <section class="panel">
+        <h2>Runtime log</h2>
+        <pre id="log" aria-live="polite"></pre>
+      </section>
+    </main>
+    <script>
+      const statusEl = document.querySelector('#status');
+      const logEl = document.querySelector('#log');
+      function append(line) {
+        logEl.textContent += `${line}\n`;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+      window.Module = {
+        arguments: ['-f', 'ram', '-w', '640', '-h', '480', 'about:blank'],
+        locateFile(path) { return path; },
+        print(text) { append(text); },
+        printErr(text) { append(`[stderr] ${text}`); },
+        preRun() { statusEl.textContent = 'starting NetSurf RAM framebuffer'; },
+        onRuntimeInitialized() { statusEl.textContent = 'NetSurf WASM runtime initialized'; },
+        onAbort(reason) { statusEl.textContent = 'NetSurf aborted'; append(`[abort] ${reason}`); },
+      };
+      window.addEventListener('error', (event) => {
+        statusEl.textContent = 'JavaScript error';
+        append(`[error] ${event.message}`);
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        statusEl.textContent = 'Promise rejection';
+        append(`[rejection] ${event.reason}`);
+      });
+    </script>
+    <script src="nsfb.js"></script>
+  </body>
+</html>
