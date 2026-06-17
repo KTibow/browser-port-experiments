@@ -24,8 +24,9 @@ export const plannedPorts = [
     id: 'netsurf-wasm',
     name: 'NetSurf WASM',
     priority: 1,
+    artifactPath: './browsers/netsurf/',
     rationale:
-      'Small C browser engine with framebuffer front ends; likely the fastest path to a real independent web engine in WASM.',
+      'Small C browser engine with framebuffer front ends; a first offline framebuffer WASM probe is checked in while canvas/networking work continues.',
   },
   {
     id: 'ladybird-engine',

@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>NetSurf framebuffer WASM probe</title>
+<style>
+  body { margin: 0; font: 15px system-ui, sans-serif; background: #10131a; color: #f3f6fb; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px; }
+  pre { min-height: 12rem; padding: 16px; overflow: auto; background: #05070a; border: 1px solid #2b3342; border-radius: 10px; }
+  .note { color: #b8c0cc; }
+</style>
+<main>
+  <h1>NetSurf framebuffer WASM probe</h1>
+  <p class="note">Offline framebuffer build: curl, JS, PNG/JPEG/WebP/SVG are disabled. The current libnsfb surface is RAM, so this proves wasm startup/linkage rather than canvas presentation.</p>
+  <pre id="log">Loading nsfb.js…</pre>
+</main>
+<script>
+  const log = document.querySelector('#log');
+  window.Module = {
+    arguments: ['-f', 'ram', 'about:welcome'],
+    print: (text) => { log.textContent += `\n${text}`; },
+    printErr: (text) => { log.textContent += `\n[stderr] ${text}`; },
+    locateFile: (path) => path,
+    onRuntimeInitialized: () => { log.textContent += '\nRuntime initialised.'; },
+  };
+</script>
+<script src="./nsfb.js"></script>

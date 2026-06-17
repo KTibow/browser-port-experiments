@@ -124,6 +124,7 @@ function renderHome() {
                   <strong>${port.name}</strong>
                   <span>Priority ${port.priority}</span>
                   <p>${port.rationale}</p>
+                  ${port.artifactPath ? `<a class="text-link" href="${port.artifactPath}">Open current probe artifact</a>` : ''}
                 </li>`,
             )
             .join('')}

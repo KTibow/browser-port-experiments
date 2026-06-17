@@ -222,6 +222,11 @@ dd {
   margin: 0;
 }
 
+.text-link {
+  color: var(--accent);
+  font-weight: 800;
+}
+
 .planned-list {
   display: grid;
   gap: 1rem;
