@@ -137,6 +137,54 @@ async function readNetSurfAddressBarMetrics(page) {
   return readNetSurfRegionMetrics(page, { x: 95, y: 3, width: 520, height: 28 });
 }
 
+async function waitForNetSurfRegionMetrics(page, expected, beforeDirtyRects) {
+  return page.waitForFunction(
+    ({ expectedMetrics, minimumDirtyRects }) => {
+      const state = window.netsurfFramebufferState;
+      if (!state || state.dirtyRectsObserved <= minimumDirtyRects) return null;
+      const canvas = document.querySelector('#viewport');
+      if (!canvas) return null;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const metricsFor = ({ x, y, width, height }) => {
+        const { data } = ctx.getImageData(x, y, width, height);
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        return { black, nonGrey, nonWhite, hash };
+      };
+      const metrics = Object.fromEntries(
+        Object.entries(expectedMetrics).map(([name, expected]) => [name, metricsFor(expected.region)]),
+      );
+      const stable = Object.entries(expectedMetrics).every(([name, expected]) => (
+        Object.entries(expected.metrics).every(([key, value]) => metrics[name][key] === value)
+      ));
+      return stable ? {
+        dirtyRectsObserved: state.dirtyRectsObserved,
+        inputEventsForwarded: state.inputEventsForwarded,
+        inputEventsDelivered: state.inputEventsDelivered,
+        inputEventsDropped: state.inputEventsDropped,
+        lastInputEvent: state.lastInputEvent,
+        cursor: state.cursor,
+        metrics,
+        dataset: document.body.dataset.netsurfFramebufferLastInput,
+        activeElementId: document.activeElement?.id,
+      } : null;
+    },
+    { expectedMetrics: expected, minimumDirtyRects: beforeDirtyRects },
+    { timeout: 10_000 },
+  ).then((handle) => handle.jsonValue());
+}
+
 async function waitForNetSurfToolbarNavigationMetrics(page, expected, beforeDirtyRects) {
   return page.waitForFunction(
     ({ expectedMetrics, minimumDirtyRects }) => {
@@ -1418,6 +1466,174 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(pageUpInput.type, 'keyup');
     assert.equal(pageUpInput.detail.key, 'PageUp');
     assert.equal(pageUpInput.detail.nsfb, 280);
+  } finally {
+    await closePage(page);
+  }
+});
+
+test('NetSurf about:welcome search form exposes deterministic focus, typing, and submit rasters', { timeout: 25_000 }, async () => {
+  const page = await newAppPage();
+  try {
+    await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
+    await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
+    await page.locator('#viewport').waitFor({ state: 'visible' });
+    await waitForNetSurfVisibleTextSignatures(page);
+
+    const canvasLocator = page.locator('#viewport');
+    const beforeSearchScrollDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+    await hoverNetSurfCanvasPixel(canvasLocator, 320, 240);
+    await page.mouse.wheel(0, 120);
+    await page.mouse.wheel(0, 120);
+    const searchFormRevealed = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        searchPanel: {
+          region: { x: 65, y: 175, width: 505, height: 140 },
+          metrics: { black: 524, nonGrey: 70700, nonWhite: 38390, hash: 3508617674 },
+        },
+        searchInput: {
+          region: { x: 105, y: 188, width: 405, height: 30 },
+          metrics: { black: 0, nonGrey: 12150, nonWhite: 2200, hash: 2983707424 },
+        },
+        searchButton: {
+          region: { x: 260, y: 222, width: 110, height: 35 },
+          metrics: { black: 396, nonGrey: 3850, nonWhite: 3850, hash: 569062084 },
+        },
+      },
+      beforeSearchScrollDirtyRects,
+    );
+    assert.ok(searchFormRevealed.dirtyRectsObserved > beforeSearchScrollDirtyRects, `expected wheel scrolling to reveal the about:welcome search form with dirty-rect advancement, got ${JSON.stringify(searchFormRevealed)}`);
+
+    const beforeInputHoverDirtyRects = searchFormRevealed.dirtyRectsObserved;
+    await hoverNetSurfCanvasPixel(canvasLocator, 120, 200);
+    const searchInputHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 734, nonGrey: 2038, nonWhite: 11160, hash: 2169014071 },
+        },
+        searchInput: {
+          region: { x: 105, y: 188, width: 405, height: 30 },
+          metrics: { black: 0, nonGrey: 12150, nonWhite: 2200, hash: 2983707424 },
+        },
+      },
+      beforeInputHoverDirtyRects,
+    );
+    assert.equal(searchInputHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(searchInputHover.cursor.hotspot, [3, 8], `expected about:welcome search input hover to expose NetSurf's I-beam cursor, got ${JSON.stringify(searchInputHover)}`);
+    assert.equal(searchInputHover.cursor.rect[2] - searchInputHover.cursor.rect[0], 7, `expected search input I-beam cursor width, got ${JSON.stringify(searchInputHover)}`);
+    assert.deepEqual(
+      searchInputHover.metrics.status,
+      { black: 734, nonGrey: 2038, nonWhite: 11160, hash: 2169014071 },
+      `expected search input hover to visibly rasterize a deterministic status-bar target, got ${JSON.stringify(searchInputHover)}`,
+    );
+
+    const beforeButtonHoverDirtyRects = searchInputHover.dirtyRectsObserved;
+    await hoverNetSurfCanvasPixel(canvasLocator, 315, 240);
+    const searchButtonHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 981, nonGrey: 2285, nonWhite: 11160, hash: 2912136484 },
+        },
+        searchButton: {
+          region: { x: 260, y: 222, width: 110, height: 35 },
+          metrics: { black: 396, nonGrey: 3850, nonWhite: 3850, hash: 569062084 },
+        },
+      },
+      beforeButtonHoverDirtyRects,
+    );
+    assert.equal(searchButtonHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(searchButtonHover.cursor.hotspot, [4, 0], `expected about:welcome search button hover to expose NetSurf's hand cursor, got ${JSON.stringify(searchButtonHover)}`);
+    assert.equal(searchButtonHover.cursor.rect[2] - searchButtonHover.cursor.rect[0], 16, `expected search button hand cursor width, got ${JSON.stringify(searchButtonHover)}`);
+
+    const beforeSearchInputFocusCount = searchButtonHover.inputEventsForwarded;
+    const beforeSearchInputFocusDirtyRects = searchButtonHover.dirtyRectsObserved;
+    await clickNetSurfCanvasPixel(canvasLocator, 200, 202);
+    const searchInputFocus = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        searchInput: {
+          region: { x: 105, y: 188, width: 405, height: 30 },
+          metrics: { black: 0, nonGrey: 12150, nonWhite: 2219, hash: 2219368695 },
+        },
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 734, nonGrey: 2038, nonWhite: 11160, hash: 2169014071 },
+        },
+      },
+      beforeSearchInputFocusDirtyRects,
+    );
+    assert.equal(searchInputFocus.lastInputEvent.type, 'pointerup-button');
+    assert.ok(searchInputFocus.inputEventsForwarded >= beforeSearchInputFocusCount + 3, `expected search input focus click forwarding, got ${JSON.stringify(searchInputFocus)}`);
+    assert.deepEqual(searchInputFocus.lastInputEvent.detail, { button: 0 });
+    assert.deepEqual(
+      searchInputFocus.metrics.searchInput,
+      { black: 0, nonGrey: 12150, nonWhite: 2219, hash: 2219368695 },
+      `expected click to visibly focus the about:welcome search text field, got ${JSON.stringify(searchInputFocus)}`,
+    );
+
+    const beforeSearchTypingCount = searchInputFocus.inputEventsForwarded;
+    const beforeSearchTypingDirtyRects = searchInputFocus.dirtyRectsObserved;
+    await page.keyboard.type('net');
+    const searchTypedText = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        searchInput: {
+          region: { x: 105, y: 188, width: 405, height: 30 },
+          metrics: { black: 117, nonGrey: 12150, nonWhite: 2337, hash: 1988530126 },
+        },
+        searchPanel: {
+          region: { x: 65, y: 175, width: 505, height: 140 },
+          metrics: { black: 641, nonGrey: 70700, nonWhite: 38527, hash: 2488143580 },
+        },
+      },
+      beforeSearchTypingDirtyRects,
+    );
+    assert.equal(searchTypedText.lastInputEvent.type, 'keyup');
+    assert.equal(searchTypedText.lastInputEvent.detail.key, 't');
+    assert.equal(searchTypedText.lastInputEvent.detail.nsfb, 116);
+    assert.ok(searchTypedText.inputEventsForwarded >= beforeSearchTypingCount + 6, `expected typing in about:welcome search field to forward keydown/keyup events, got ${JSON.stringify(searchTypedText)}`);
+    assert.deepEqual(
+      searchTypedText.metrics.searchInput,
+      { black: 117, nonGrey: 12150, nonWhite: 2337, hash: 1988530126 },
+      `expected typed search text to visibly rasterize in the about:welcome search field, got ${JSON.stringify(searchTypedText)}`,
+    );
+
+    const beforeSearchSubmitDirtyRects = searchTypedText.dirtyRectsObserved;
+    await clickNetSurfCanvasPixel(canvasLocator, 315, 240);
+    const searchSubmit = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 382, nonGrey: 1686, nonWhite: 11160, hash: 2143802459 },
+        },
+        address: {
+          region: { x: 95, y: 3, width: 520, height: 28 },
+          metrics: { black: 1424, nonGrey: 12610, nonWhite: 4570, hash: 1780460690 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 1278, nonGrey: 267668, nonWhite: 272453, hash: 1306608447 },
+        },
+      },
+      beforeSearchSubmitDirtyRects,
+    );
+    assert.equal(searchSubmit.lastInputEvent.type, 'pointerup-button');
+    assert.equal(searchSubmit.inputEventsDropped, 0, `expected no dropped input events through search form submit, got ${JSON.stringify(searchSubmit)}`);
+    assert.deepEqual(
+      searchSubmit.metrics.status,
+      { black: 382, nonGrey: 1686, nonWhite: 11160, hash: 2143802459 },
+      `expected search form submit to visibly rasterize a deterministic offline status-bar effect, got ${JSON.stringify(searchSubmit)}`,
+    );
+    assert.deepEqual(
+      searchSubmit.metrics.address,
+      { black: 1424, nonGrey: 12610, nonWhite: 4570, hash: 1780460690 },
+      `expected search form submit to visibly update the toolbar address raster without hard-coded networking, got ${JSON.stringify(searchSubmit)}`,
+    );
   } finally {
     await closePage(page);
   }
