@@ -271,24 +271,42 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(pageCursor.cursor.rect[2] - pageCursor.cursor.rect[0], 12, `expected normal content cursor width, got ${JSON.stringify(pageCursor)}`);
     assert.equal(pageCursor.cursor.rect[3] - pageCursor.cursor.rect[1], 22, `expected normal content cursor height, got ${JSON.stringify(pageCursor)}`);
 
+    const beforeAddressStatus = await readNetSurfStatusBarMetrics(page);
     await hoverNetSurfCanvasPixel(canvasLocator, 180, 16);
     const addressHover = await page.waitForFunction(
-      (beforeInputCount) => {
+      ({ beforeInputCount, beforeStatus }) => {
         const state = window.netsurfFramebufferState;
         const rect = state?.cursor?.rect;
         const hotspot = state?.cursor?.hotspot;
         if (!rect || !hotspot) return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const { data } = ctx.getImageData(0, 462, 200, 18);
+        let black = 0;
+        let nonGrey = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
         const overAddressBar = rect[0] >= 179 && rect[0] <= 181 && rect[1] >= 15 && rect[1] <= 17;
         const iBeamShape = rect[2] - rect[0] === 7 && rect[3] - rect[1] === 19 && hotspot[0] === 3 && hotspot[1] === 8;
-        if (!overAddressBar || !iBeamShape || state.inputEventsForwarded <= beforeInputCount) return null;
+        const statusRedrawn = black >= beforeStatus.black + 300 && hash !== beforeStatus.hash;
+        if (!overAddressBar || !iBeamShape || !statusRedrawn || state.inputEventsForwarded <= beforeInputCount) return null;
         return {
           cursor: state.cursor,
           dataset: document.body.dataset.netsurfFramebufferCursor,
           inputEventsForwarded: state.inputEventsForwarded,
           lastInputEvent: state.lastInputEvent,
+          lastDirtyRect: state.lastDirtyRect,
+          status: { black, nonGrey, hash },
         };
       },
-      pageCursor.inputEventsForwarded,
+      { beforeInputCount: pageCursor.inputEventsForwarded, beforeStatus: beforeAddressStatus },
     ).then((handle) => handle.jsonValue());
     assert.equal(addressHover.dataset, addressHover.cursor.rect.join(','));
     assert.equal(addressHover.lastInputEvent.type, 'pointermove');
@@ -296,27 +314,60 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       Math.abs(addressHover.lastInputEvent.detail.x - 180) <= 1 && Math.abs(addressHover.lastInputEvent.detail.y - 16) <= 1,
       `expected address-bar hover motion near 180,16, got ${JSON.stringify(addressHover)}`,
     );
+    assert.ok(
+      addressHover.lastDirtyRect[0] <= 0 && addressHover.lastDirtyRect[1] <= 462 && addressHover.lastDirtyRect[2] >= 200 && addressHover.lastDirtyRect[3] >= 480,
+      `expected address-bar hover to redraw NetSurf's status bar, got ${JSON.stringify(addressHover)}`,
+    );
+    assert.ok(
+      addressHover.status.black >= beforeAddressStatus.black + 300,
+      `expected address-bar hover to visibly change NetSurf status-bar pixels, got before ${JSON.stringify(beforeAddressStatus)} after ${JSON.stringify(addressHover)}`,
+    );
 
     const beforeAddressKeyCount = addressHover.inputEventsForwarded;
     await clickNetSurfCanvasPixel(canvasLocator, 180, 16);
     await page.keyboard.press('x');
     const addressKeyForwarding = await page.waitForFunction(
-      (before) => {
+      ({ beforeCount, beforeStatus }) => {
         const state = window.netsurfFramebufferState;
-        if (!state || state.inputEventsForwarded < before + 4 || state.lastInputEvent?.type !== 'keyup') return null;
+        if (!state || state.inputEventsForwarded < beforeCount + 4 || state.lastInputEvent?.type !== 'keyup') return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const { data } = ctx.getImageData(0, 462, 200, 18);
+        let black = 0;
+        let nonGrey = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        if (black > beforeStatus.black - 300 || hash === beforeStatus.hash) return null;
         return {
           after: state.inputEventsForwarded,
           cursor: state.cursor,
           lastInputEvent: state.lastInputEvent,
+          lastDirtyRect: state.lastDirtyRect,
+          status: { black, nonGrey, hash },
           dataset: document.body.dataset.netsurfFramebufferLastInput,
         };
       },
-      beforeAddressKeyCount,
+      { beforeCount: beforeAddressKeyCount, beforeStatus: addressHover.status },
     ).then((handle) => handle.jsonValue());
     assert.equal(addressKeyForwarding.lastInputEvent.detail.key, 'x');
     assert.equal(addressKeyForwarding.lastInputEvent.detail.nsfb, 120);
     assert.equal(addressKeyForwarding.dataset, 'keyup');
     assert.deepEqual(addressKeyForwarding.cursor.hotspot, [3, 8], `expected address-bar text cursor to remain active while typing, got ${JSON.stringify(addressKeyForwarding)}`);
+    assert.ok(
+      addressKeyForwarding.lastDirtyRect[0] <= 0 && addressKeyForwarding.lastDirtyRect[1] <= 462 && addressKeyForwarding.lastDirtyRect[2] >= 200 && addressKeyForwarding.lastDirtyRect[3] >= 480,
+      `expected address-bar key handling to visibly redraw NetSurf's status bar, got ${JSON.stringify(addressKeyForwarding)}`,
+    );
+    assert.ok(
+      addressKeyForwarding.status.black <= addressHover.status.black - 300,
+      `expected address-bar typing to visibly change status-bar pixels, got hover ${JSON.stringify(addressHover)} typing ${JSON.stringify(addressKeyForwarding)}`,
+    );
 
     const beforeToolbarStatus = await readNetSurfStatusBarMetrics(page);
     await clickNetSurfCanvasPixel(canvasLocator, 75, 15);
