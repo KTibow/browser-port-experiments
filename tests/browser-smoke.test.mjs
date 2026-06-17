@@ -2239,6 +2239,107 @@ test('NetSurf about:welcome lower link activation preserves offline content with
   }
 });
 
+test('NetSurf about:welcome top navigation links expose distinct hover targets and offline activation', { timeout: 25_000 }, async () => {
+  const page = await newAppPage();
+  try {
+    await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
+    await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
+    await page.locator('#viewport').waitFor({ state: 'visible' });
+    await waitForNetSurfVisibleTextSignatures(page);
+
+    const canvasLocator = page.locator('#viewport');
+    const beforeDocsHoverDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+    await hoverNetSurfCanvasPixel(canvasLocator, 320, 138);
+    const docsHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 1436, nonGrey: 2740, nonWhite: 11160, hash: 3529665267 },
+        },
+        topNavigation: {
+          region: { x: 0, y: 120, width: 640, height: 42 },
+          metrics: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+        },
+      },
+      beforeDocsHoverDirtyRects,
+    );
+    assert.equal(docsHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(docsHover.cursor.hotspot, [4, 0], `expected about:welcome documentation link hover to expose NetSurf's hand cursor, got ${JSON.stringify(docsHover)}`);
+    assert.equal(docsHover.cursor.rect[2] - docsHover.cursor.rect[0], 16, `expected top navigation documentation hand cursor width, got ${JSON.stringify(docsHover)}`);
+    assert.deepEqual(
+      docsHover.metrics.status,
+      { black: 1436, nonGrey: 2740, nonWhite: 11160, hash: 3529665267 },
+      `expected top navigation documentation hover to rasterize a deterministic status-bar URL, got ${JSON.stringify(docsHover)}`,
+    );
+
+    await hoverNetSurfCanvasPixel(canvasLocator, 540, 138);
+    const downloadsHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 1331, nonGrey: 2635, nonWhite: 11160, hash: 782674110 },
+        },
+        topNavigation: {
+          region: { x: 0, y: 120, width: 640, height: 42 },
+          metrics: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+        },
+      },
+      docsHover.dirtyRectsObserved,
+    );
+    assert.equal(downloadsHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(downloadsHover.cursor.hotspot, [4, 0], `expected about:welcome download link hover to expose NetSurf's hand cursor, got ${JSON.stringify(downloadsHover)}`);
+    assert.notEqual(downloadsHover.metrics.status.hash, docsHover.metrics.status.hash, `expected adjacent top navigation links to expose distinct status-bar URLs, got ${JSON.stringify({ docsHover, downloadsHover })}`);
+    assert.deepEqual(
+      downloadsHover.metrics.topNavigation,
+      { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+      `expected top navigation hover to preserve the visible nslinks raster band, got ${JSON.stringify(downloadsHover)}`,
+    );
+
+    const beforeDownloadsActivationCount = downloadsHover.inputEventsForwarded;
+    await clickNetSurfCanvasPixel(canvasLocator, 540, 138);
+    const downloadsActivation = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+        },
+        address: {
+          region: { x: 95, y: 3, width: 520, height: 28 },
+          metrics: { black: 1503, nonGrey: 12610, nonWhite: 4649, hash: 1458272501 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 1808, nonGrey: 268532, nonWhite: 135133, hash: 4161839195 },
+        },
+        topNavigation: {
+          region: { x: 0, y: 120, width: 640, height: 42 },
+          metrics: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+        },
+      },
+      downloadsHover.dirtyRectsObserved,
+    );
+    assert.equal(downloadsActivation.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(downloadsActivation.lastInputEvent.detail, { button: 0 });
+    assert.ok(downloadsActivation.inputEventsForwarded >= beforeDownloadsActivationCount + 3, `expected top navigation activation click forwarding, got ${JSON.stringify(downloadsActivation)}`);
+    assert.equal(downloadsActivation.inputEventsDropped, 0, `expected no dropped input events through top navigation activation, got ${JSON.stringify(downloadsActivation)}`);
+    assert.deepEqual(
+      downloadsActivation.metrics,
+      {
+        status: { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+        address: { black: 1503, nonGrey: 12610, nonWhite: 4649, hash: 1458272501 },
+        content: { black: 1808, nonGrey: 268532, nonWhite: 135133, hash: 4161839195 },
+        topNavigation: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+      },
+      `expected top navigation activation to visibly redraw offline status while preserving address/content/nav rasters, got ${JSON.stringify(downloadsActivation)}`,
+    );
+  } finally {
+    await closePage(page);
+  }
+});
+
 test('NetSurf about:welcome top visible search button submits an empty form with deterministic offline rasters', { timeout: 25_000 }, async () => {
   const page = await newAppPage();
   try {
