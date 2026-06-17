@@ -150,6 +150,10 @@ async function waitForNetSurfVisibleTextSignatures(page) {
       welcomeHeading: { x: 35, y: 188, width: 330, height: 44, expectedCount: 3164, expectedHash: 1554281271 },
       welcomeBodyCopy: { x: 35, y: 230, width: 530, height: 84, expectedCount: 5197, expectedHash: 4192242756 },
     };
+    const colorBitmapSignatures = {
+      toolbarIconBitmaps: { x: 0, y: 0, width: 95, height: 30, expectedCount: 265, expectedHash: 3910769378, predicate: 'saturatedChrome' },
+      welcomeLogoBitmap: { x: 15, y: 118, width: 570, height: 45, expectedCount: 3287, expectedHash: 736990473, predicate: 'netsurfBlue' },
+    };
 
     const groups = (items) => {
       const result = [];
@@ -167,7 +171,7 @@ async function waitForNetSurfVisibleTextSignatures(page) {
       ]);
     };
 
-    const signatureFor = ({ x, y, width, height }) => {
+    const signatureForPredicate = ({ x, y, width, height }, predicate, includeRgbInHash = false) => {
       const rowCounts = [];
       const colCounts = [];
       let count = 0;
@@ -176,14 +180,14 @@ async function waitForNetSurfVisibleTextSignatures(page) {
         let rowCount = 0;
         for (let xx = x; xx < x + width; xx += 1) {
           const offset = (yy * canvas.width + xx) * 4;
-          // NetSurf's default bitmap font draws black headings/chrome and
-          // #666 body copy. Threshold just those glyph strokes, not the blue
-          // about:welcome panels or white body background.
-          const isGlyph = image[offset] <= 110 && image[offset + 1] <= 110 && image[offset + 2] <= 110;
-          if (isGlyph) {
+          const red = image[offset];
+          const green = image[offset + 1];
+          const blue = image[offset + 2];
+          if (predicate(red, green, blue)) {
             rowCount += 1;
             count += 1;
-            hash = (Math.imul(hash, 16777619) ^ ((xx - x) * 13) ^ ((yy - y) * 17)) >>> 0;
+            const colorHash = includeRgbInHash ? red ^ (green << 8) ^ (blue << 16) : 0;
+            hash = (Math.imul(hash, 16777619) ^ ((xx - x) * 13) ^ ((yy - y) * 17) ^ colorHash) >>> 0;
           }
         }
         if (rowCount) rowCounts.push([yy, rowCount]);
@@ -192,20 +196,41 @@ async function waitForNetSurfVisibleTextSignatures(page) {
         let colCount = 0;
         for (let yy = y; yy < y + height; yy += 1) {
           const offset = (yy * canvas.width + xx) * 4;
-          if (image[offset] <= 110 && image[offset + 1] <= 110 && image[offset + 2] <= 110) colCount += 1;
+          if (predicate(image[offset], image[offset + 1], image[offset + 2])) colCount += 1;
         }
         if (colCount) colCounts.push([xx, colCount]);
       }
       return { x, y, width, height, count, hash, rowBands: groups(rowCounts), colBands: groups(colCounts) };
     };
 
-    const signatures = Object.fromEntries(
-      Object.entries(darkGlyphSignatures).map(([name, region]) => [name, signatureFor(region)]),
-    );
-    const stable = Object.entries(darkGlyphSignatures).every(([name, expected]) => (
+    const darkGlyph = (red, green, blue) => {
+      // NetSurf's default bitmap font draws black headings/chrome and #666
+      // body copy. Threshold just those glyph strokes, not the blue
+      // about:welcome panels or white body background.
+      return red <= 110 && green <= 110 && blue <= 110;
+    };
+    const colorPredicates = {
+      saturatedChrome: (red, green, blue) => Math.max(red, green, blue) - Math.min(red, green, blue) > 30 && !(red === 221 && green === 221 && blue === 221),
+      netsurfBlue: (red, green, blue) => blue > 120 && red < 120 && green < 180 && blue > red + 40 && blue > green + 20,
+    };
+    const signatureFor = (region) => signatureForPredicate(region, darkGlyph);
+    const colorSignatureFor = (region) => signatureForPredicate(region, colorPredicates[region.predicate], true);
+
+    const signatures = {
+      ...Object.fromEntries(
+        Object.entries(darkGlyphSignatures).map(([name, region]) => [name, signatureFor(region)]),
+      ),
+      ...Object.fromEntries(
+        Object.entries(colorBitmapSignatures).map(([name, region]) => [name, colorSignatureFor(region)]),
+      ),
+    };
+    const stableGlyphs = Object.entries(darkGlyphSignatures).every(([name, expected]) => (
       signatures[name].count === expected.expectedCount && signatures[name].hash === expected.expectedHash
     ));
-    return stable ? signatures : null;
+    const stableBitmaps = Object.entries(colorBitmapSignatures).every(([name, expected]) => (
+      signatures[name].count === expected.expectedCount && signatures[name].hash === expected.expectedHash
+    ));
+    return stableGlyphs && stableBitmaps ? signatures : null;
   }, null, { timeout: 15_000 }).then((handle) => handle.jsonValue());
 }
 
@@ -341,14 +366,18 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
         addressChrome: { count: textSignatures.addressChrome.count, hash: textSignatures.addressChrome.hash, rowBands: textSignatures.addressChrome.rowBands, colBandCount: textSignatures.addressChrome.colBands.length },
         welcomeHeading: { count: textSignatures.welcomeHeading.count, hash: textSignatures.welcomeHeading.hash, rowBands: textSignatures.welcomeHeading.rowBands, colBandCount: textSignatures.welcomeHeading.colBands.length },
         welcomeBodyCopy: { count: textSignatures.welcomeBodyCopy.count, hash: textSignatures.welcomeBodyCopy.hash, rowBands: textSignatures.welcomeBodyCopy.rowBands, colBandCount: textSignatures.welcomeBodyCopy.colBands.length },
+        toolbarIconBitmaps: { count: textSignatures.toolbarIconBitmaps.count, hash: textSignatures.toolbarIconBitmaps.hash, rowBands: textSignatures.toolbarIconBitmaps.rowBands, colBands: textSignatures.toolbarIconBitmaps.colBands },
+        welcomeLogoBitmap: { count: textSignatures.welcomeLogoBitmap.count, hash: textSignatures.welcomeLogoBitmap.hash, rowBands: textSignatures.welcomeLogoBitmap.rowBands, colBands: textSignatures.welcomeLogoBitmap.colBands },
       },
       {
         toolbarChrome: { count: 262, hash: 1066696110, rowBands: [[4, 25, 262, 24]], colBandCount: 2 },
         addressChrome: { count: 1607, hash: 460374291, rowBands: [[3, 27, 1607, 451]], colBandCount: 3 },
         welcomeHeading: { count: 3164, hash: 1554281271, rowBands: [[196, 219, 3164, 202]], colBandCount: 16 },
         welcomeBodyCopy: { count: 5197, hash: 4192242756, rowBands: [[247, 261, 1996, 294], [268, 282, 1911, 300], [289, 303, 1290, 197]], colBandCount: 64 },
+        toolbarIconBitmaps: { count: 265, hash: 3910769378, rowBands: [[5, 24, 265, 21]], colBands: [[29, 34, 48, 8], [43, 48, 72, 12], [82, 94, 145, 14]] },
+        welcomeLogoBitmap: { count: 3287, hash: 736990473, rowBands: [[123, 156, 3287, 365]], colBands: [[19, 114, 698, 26], [140, 243, 612, 13], [284, 403, 1021, 24], [487, 574, 956, 22]] },
       },
-      `expected deterministic visible NetSurf chrome/about:welcome glyph coverage, got ${JSON.stringify(textSignatures)}`,
+      `expected deterministic visible NetSurf chrome/about:welcome glyph and bitmap coverage, got ${JSON.stringify(textSignatures)}`,
     );
     assert.doesNotMatch(result.log, /Message translations failed to load|Unable to open Messages|Unable to find resource|Invalid UTF-8/i);
     assert.ok(result.state.cursor, `expected deterministic libnsfb cursor callback metadata, got ${JSON.stringify(result)}`);
