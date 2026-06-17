@@ -19,7 +19,7 @@ What it proves:
 - The full `nsfb.js` artifact is modularized as `createNetSurfFrameBuffer`, starts from the public page, enters an Emscripten browser main loop, and exports its live framebuffer pointer/width/height/stride plus input queue shims.
 - The public page copies NetSurf framebuffer frontend pixels (currently `-f emscripten -w 640 -h 480 about:blank`) into Canvas `ImageData` from libnsfb surface `update` dirty rectangles, coalesces callback bursts to one `requestAnimationFrame` paint, and stamps canvas/body dirty-rect metadata for smoke tests.
 - Canvas pointer movement/buttons, wheel, and a broader SDL/libnsfb-style keyboard subset (navigation, modifiers, function keys, numpad fallbacks, printable Latin-1) are queued into libnsfb events for the framebuffer frontend/fbtk path.
-- A deterministic Playwright interaction now clicks the NetSurf reload toolbar button and asserts the engine's own status-bar framebuffer region redraws with transient activation/status text, proving an observable browser-state change beyond JS forwarded-event counters.
+- Deterministic Playwright interactions now hit-test the NetSurf address bar (asserting the libnsfb cursor switches from the normal content pointer to the text I-beam and forwarding an address-bar key sequence through the focused canvas) and click the NetSurf reload toolbar button, asserting the engine's own status-bar framebuffer region redraws with transient activation/status text. This proves observable browser-state changes beyond JS forwarded-event counters.
 - The checked-in artifacts are intentionally offline: curl/networking, OpenSSL, JavaScript/Duktape, PNG/JPEG/WebP/JPEGXL, SVG, and freetype are disabled.
 
 What it does **not** prove yet:
@@ -111,7 +111,7 @@ ports/netsurf/scripts/verify-artifact.sh
 npm test
 ```
 
-The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, samples deterministic NetSurf chrome/about:blank pixels, clicks the reload toolbar button and waits for a NetSurf-rendered status-bar redraw, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
+The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, samples deterministic NetSurf chrome/about:blank pixels, moves over the address bar to assert the text I-beam cursor/hit-test path and forwards a key while the canvas is focused, clicks the reload toolbar button and waits for a NetSurf-rendered status-bar redraw, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
 
 ## Suggested next steps
 

@@ -89,16 +89,22 @@ async function closePage(page) {
   await page.context().close();
 }
 
-async function clickNetSurfCanvasPixel(canvasLocator, x, y) {
+async function netSurfCanvasCssPosition(canvasLocator, x, y) {
   const box = await canvasLocator.boundingBox();
   if (!box) throw new Error('NetSurf canvas is not visible');
   const canvasSize = await canvasLocator.evaluate((canvas) => ({ width: canvas.width, height: canvas.height }));
-  await canvasLocator.click({
-    position: {
-      x: x * box.width / canvasSize.width,
-      y: y * box.height / canvasSize.height,
-    },
-  });
+  return {
+    x: x * box.width / canvasSize.width,
+    y: y * box.height / canvasSize.height,
+  };
+}
+
+async function clickNetSurfCanvasPixel(canvasLocator, x, y) {
+  await canvasLocator.click({ position: await netSurfCanvasCssPosition(canvasLocator, x, y) });
+}
+
+async function hoverNetSurfCanvasPixel(canvasLocator, x, y) {
+  await canvasLocator.hover({ position: await netSurfCanvasCssPosition(canvasLocator, x, y) });
 }
 
 async function readNetSurfStatusBarMetrics(page) {
@@ -252,6 +258,66 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.deepEqual(result.blankPage, [255, 255, 255, 255], `expected deterministic about:blank content pixel, got ${JSON.stringify(result)}`);
 
     const canvasLocator = page.locator('#viewport');
+    await hoverNetSurfCanvasPixel(canvasLocator, 320, 240);
+    await page.waitForFunction(() => {
+      const rect = window.netsurfFramebufferState?.cursor?.rect;
+      return rect && rect[0] >= 319 && rect[0] <= 321 && rect[1] >= 239 && rect[1] <= 241;
+    });
+    const pageCursor = await page.evaluate(() => ({
+      cursor: window.netsurfFramebufferState.cursor,
+      inputEventsForwarded: window.netsurfFramebufferState.inputEventsForwarded,
+    }));
+    assert.deepEqual(pageCursor.cursor.hotspot, [0, 0], `expected normal content cursor hotspot before address-bar hit testing, got ${JSON.stringify(pageCursor)}`);
+    assert.equal(pageCursor.cursor.rect[2] - pageCursor.cursor.rect[0], 12, `expected normal content cursor width, got ${JSON.stringify(pageCursor)}`);
+    assert.equal(pageCursor.cursor.rect[3] - pageCursor.cursor.rect[1], 22, `expected normal content cursor height, got ${JSON.stringify(pageCursor)}`);
+
+    await hoverNetSurfCanvasPixel(canvasLocator, 180, 16);
+    const addressHover = await page.waitForFunction(
+      (beforeInputCount) => {
+        const state = window.netsurfFramebufferState;
+        const rect = state?.cursor?.rect;
+        const hotspot = state?.cursor?.hotspot;
+        if (!rect || !hotspot) return null;
+        const overAddressBar = rect[0] >= 179 && rect[0] <= 181 && rect[1] >= 15 && rect[1] <= 17;
+        const iBeamShape = rect[2] - rect[0] === 7 && rect[3] - rect[1] === 19 && hotspot[0] === 3 && hotspot[1] === 8;
+        if (!overAddressBar || !iBeamShape || state.inputEventsForwarded <= beforeInputCount) return null;
+        return {
+          cursor: state.cursor,
+          dataset: document.body.dataset.netsurfFramebufferCursor,
+          inputEventsForwarded: state.inputEventsForwarded,
+          lastInputEvent: state.lastInputEvent,
+        };
+      },
+      pageCursor.inputEventsForwarded,
+    ).then((handle) => handle.jsonValue());
+    assert.equal(addressHover.dataset, addressHover.cursor.rect.join(','));
+    assert.equal(addressHover.lastInputEvent.type, 'pointermove');
+    assert.ok(
+      Math.abs(addressHover.lastInputEvent.detail.x - 180) <= 1 && Math.abs(addressHover.lastInputEvent.detail.y - 16) <= 1,
+      `expected address-bar hover motion near 180,16, got ${JSON.stringify(addressHover)}`,
+    );
+
+    const beforeAddressKeyCount = addressHover.inputEventsForwarded;
+    await clickNetSurfCanvasPixel(canvasLocator, 180, 16);
+    await page.keyboard.press('x');
+    const addressKeyForwarding = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.inputEventsForwarded < before + 4 || state.lastInputEvent?.type !== 'keyup') return null;
+        return {
+          after: state.inputEventsForwarded,
+          cursor: state.cursor,
+          lastInputEvent: state.lastInputEvent,
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+        };
+      },
+      beforeAddressKeyCount,
+    ).then((handle) => handle.jsonValue());
+    assert.equal(addressKeyForwarding.lastInputEvent.detail.key, 'x');
+    assert.equal(addressKeyForwarding.lastInputEvent.detail.nsfb, 120);
+    assert.equal(addressKeyForwarding.dataset, 'keyup');
+    assert.deepEqual(addressKeyForwarding.cursor.hotspot, [3, 8], `expected address-bar text cursor to remain active while typing, got ${JSON.stringify(addressKeyForwarding)}`);
+
     const beforeToolbarStatus = await readNetSurfStatusBarMetrics(page);
     await clickNetSurfCanvasPixel(canvasLocator, 75, 15);
     const toolbarActivation = await page.waitForFunction(
