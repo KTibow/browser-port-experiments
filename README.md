@@ -8,6 +8,7 @@ A relay workspace for porting useful browsers and browser engines to run entirel
 - Root page links to registered browser experiments.
 - Current working control: **Baseline Iframe Browser Shell** (`#/browser/iframe-shell`). It provides browser chrome and a viewport harness, but honestly uses the host browser iframe and is limited by `X-Frame-Options`/CSP.
 - Default Wisp endpoint constant: `wss://anura.pro/`.
+- NetSurf WASM lane: `ports/netsurf/` documents and scripts a framebuffer/RAM Emscripten probe, with an inspection artifact at `public/browsers/netsurf/probe.html`.
 
 ## Local development
 

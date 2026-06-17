@@ -4,3 +4,4 @@ dist/
 .vite/
 
 ports/netsurf/work/
+ports/netsurf/vendor/

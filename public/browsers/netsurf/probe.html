@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>NetSurf WASM probe notes</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 70rem; line-height: 1.5; }
+  code, pre { background: #f4f4f5; padding: .15rem .3rem; border-radius: .25rem; }
+  pre { padding: 1rem; overflow: auto; }
+</style>
+<h1>NetSurf WASM probe</h1>
+<p>This page includes the first checked-in NetSurf framebuffer/RAM Emscripten output. It is not a usable browser yet: networking and canvas blitting are not wired, and the build disables cURL/PNG/JPEG/SVG to prove the core compile/link path first.</p>
+<p><a href="./nsfb.js">nsfb.js</a> · <a href="./nsfb.wasm">nsfb.wasm</a></p>
+<pre id="status">Checking shared Wisp API…</pre>
+<pre id="netsurf-output">NetSurf stdout/stderr will appear here if the wasm glue starts.</pre>
+<script>
+  const output = document.querySelector('#netsurf-output');
+  window.Module = {
+    arguments: ['about:blank'],
+    print: (...args) => { output.textContent += `\n${args.join(' ')}`; },
+    printErr: (...args) => { output.textContent += `\n[err] ${args.join(' ')}`; },
+  };
+</script>
+<script src="./nsfb.js"></script>
+<script type="module">
+  const status = document.querySelector('#status');
+  const bridge = window.parent?.BrowserPortWisp || window.BrowserPortWisp;
+  status.textContent = JSON.stringify({
+    browserPortWispAvailable: Boolean(bridge),
+    endpoint: bridge?.readEndpoint?.() || '(unavailable from this standalone static page)',
+    nextNetworkStep: 'Implement a NetSurf fetcher/libcurl socket shim using BrowserPortWisp.openTcpStream; do not hard-code endpoints.',
+  }, null, 2);
+</script>
