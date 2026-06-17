@@ -637,25 +637,54 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     );
 
     const beforeBrowserTextInputCount = addressKeyForwarding.after;
+    const beforeBrowserTextInputDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
     await page.keyboard.type('é');
     const browserBeforeInputCoverage = await page.waitForFunction(
-      (before) => {
+      ({ before, minimumDirtyRects }) => {
         const state = window.netsurfFramebufferState;
-        if (!state || state.inputEventsForwarded < before + 2 || state.lastInputEvent?.type !== 'beforeinput') return null;
+        if (!state || state.inputEventsForwarded < before + 2 || state.lastInputEvent?.type !== 'beforeinput' || state.dirtyRectsObserved <= minimumDirtyRects) return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const addressPixels = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < addressPixels.length; i += 4) {
+          const red = addressPixels[i];
+          const green = addressPixels[i + 1];
+          const blue = addressPixels[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const address = { black, nonGrey, nonWhite, hash };
+        const visibleBeforeInputText = black === 1580 && nonGrey === 12610 && nonWhite === 4744 && hash === 628844700;
+        if (!visibleBeforeInputText) return null;
         return {
           before,
           after: state.inputEventsForwarded,
+          dirtyBefore: minimumDirtyRects,
+          dirtyAfter: state.dirtyRectsObserved,
           activeElementId: document.activeElement?.id,
           lastInputEvent: state.lastInputEvent,
           history: state.inputEventHistory.slice(-6).map(({ type, detail }) => ({ type, detail })),
+          address,
           dataset: document.body.dataset.netsurfFramebufferLastInput,
         };
       },
-      beforeBrowserTextInputCount,
+      { before: beforeBrowserTextInputCount, minimumDirtyRects: beforeBrowserTextInputDirtyRects },
     ).then((handle) => handle.jsonValue());
     assert.equal(browserBeforeInputCoverage.activeElementId, 'netsurf-text-input');
     assert.equal(browserBeforeInputCoverage.dataset, 'beforeinput');
     assert.ok(browserBeforeInputCoverage.after >= beforeBrowserTextInputCount + 2, `expected browser-generated beforeinput text to forward key down/up, got ${JSON.stringify(browserBeforeInputCoverage)}`);
+    assert.ok(browserBeforeInputCoverage.dirtyAfter > browserBeforeInputCoverage.dirtyBefore, `expected browser-generated beforeinput text to redraw the fbtk address bar, got ${JSON.stringify(browserBeforeInputCoverage)}`);
+    assert.deepEqual(
+      browserBeforeInputCoverage.address,
+      { black: 1580, nonGrey: 12610, nonWhite: 4744, hash: 628844700 },
+      `expected trusted browser beforeinput to visibly add a deterministic address-bar glyph after x, got ${JSON.stringify(browserBeforeInputCoverage)}`,
+    );
     assert.deepEqual(
       browserBeforeInputCoverage.lastInputEvent.detail,
       { text: 'é', inputType: 'insertText', isComposing: false, trusted: true, compositionActive: false, forwardedCharacters: 1 },
@@ -679,25 +708,51 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       replacementEnd: 0,
     });
     const trustedImeCompositionCoverage = await page.waitForFunction(
-      (before) => {
+      ({ before, expectedAddress }) => {
         const state = window.netsurfFramebufferState;
         if (!state || state.lastInputEvent?.type !== 'beforeinput') return null;
         const history = state.inputEventHistory.slice(-8).map(({ type, detail }) => ({ type, detail }));
         const hasTrustedUpdate = history.some((event) => event.type === 'compositionupdate' && event.detail?.text === 'é' && event.detail?.trusted === true);
         if (!hasTrustedUpdate || state.lastInputEvent.detail?.inputType !== 'insertCompositionText') return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const addressPixels = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < addressPixels.length; i += 4) {
+          const red = addressPixels[i];
+          const green = addressPixels[i + 1];
+          const blue = addressPixels[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const address = { black, nonGrey, nonWhite, hash };
+        const compositionDidNotPaintUncommittedText = Object.entries(expectedAddress).every(([key, value]) => address[key] === value);
+        if (!compositionDidNotPaintUncommittedText) return null;
         return {
           before,
           after: state.inputEventsForwarded,
           compositionSession: state.compositionSession,
           lastInputEvent: state.lastInputEvent,
           history,
+          address,
+          dirtyRectsObserved: state.dirtyRectsObserved,
           dataset: document.body.dataset.netsurfFramebufferLastInput,
         };
       },
-      beforeTrustedImeCount,
+      { before: beforeTrustedImeCount, expectedAddress: browserBeforeInputCoverage.address },
     ).then((handle) => handle.jsonValue());
     assert.equal(trustedImeCompositionCoverage.after, beforeTrustedImeCount, `expected trusted IME composition updates to update metadata without premature key forwarding, got ${JSON.stringify(trustedImeCompositionCoverage)}`);
     assert.equal(trustedImeCompositionCoverage.dataset, 'beforeinput');
+    assert.deepEqual(
+      trustedImeCompositionCoverage.address,
+      browserBeforeInputCoverage.address,
+      `expected uncommitted trusted Chromium IME composition text to leave the visible address bar unchanged, got ${JSON.stringify(trustedImeCompositionCoverage)}`,
+    );
     assert.deepEqual(
       trustedImeCompositionCoverage.lastInputEvent.detail,
       { text: 'é', inputType: 'insertCompositionText', isComposing: true, trusted: true, compositionActive: true, forwardedCharacters: 0 },
@@ -707,24 +762,53 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(trustedImeCompositionCoverage.compositionSession.text, 'é');
     assert.ok(trustedImeCompositionCoverage.compositionSession.updates >= 1, `expected tracked IME composition updates, got ${JSON.stringify(trustedImeCompositionCoverage)}`);
 
+    const beforeTrustedImeCommitDirtyRects = trustedImeCompositionCoverage.dirtyRectsObserved;
     await cdpSession.send('Input.insertText', { text: 'é' });
     const trustedImeCommitCoverage = await page.waitForFunction(
-      (before) => {
+      ({ before, minimumDirtyRects }) => {
         const state = window.netsurfFramebufferState;
-        if (!state || state.inputEventsForwarded < before + 2 || state.lastInputEvent?.type !== 'beforeinput') return null;
+        if (!state || state.inputEventsForwarded < before + 2 || state.lastInputEvent?.type !== 'beforeinput' || state.dirtyRectsObserved <= minimumDirtyRects) return null;
         if (state.lastInputEvent.detail?.inputType !== 'insertText') return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const addressPixels = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < addressPixels.length; i += 4) {
+          const red = addressPixels[i];
+          const green = addressPixels[i + 1];
+          const blue = addressPixels[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const address = { black, nonGrey, nonWhite, hash };
+        const visibleCommittedImeText = black === 1621 && nonGrey === 12610 && nonWhite === 4785 && hash === 924561963;
+        if (!visibleCommittedImeText) return null;
         return {
           before,
           after: state.inputEventsForwarded,
+          dirtyBefore: minimumDirtyRects,
+          dirtyAfter: state.dirtyRectsObserved,
           compositionSession: state.compositionSession,
           lastInputEvent: state.lastInputEvent,
           history: state.inputEventHistory.slice(-8).map(({ type, detail }) => ({ type, detail })),
+          address,
           dataset: document.body.dataset.netsurfFramebufferLastInput,
         };
       },
-      beforeTrustedImeCount,
+      { before: beforeTrustedImeCount, minimumDirtyRects: beforeTrustedImeCommitDirtyRects },
     ).then((handle) => handle.jsonValue());
     assert.ok(trustedImeCommitCoverage.after >= beforeTrustedImeCount + 2, `expected trusted CDP IME commit to forward Latin-1 key down/up, got ${JSON.stringify(trustedImeCommitCoverage)}`);
+    assert.ok(trustedImeCommitCoverage.dirtyAfter > trustedImeCommitCoverage.dirtyBefore, `expected trusted CDP IME commit to redraw the fbtk address bar, got ${JSON.stringify(trustedImeCommitCoverage)}`);
+    assert.deepEqual(
+      trustedImeCommitCoverage.address,
+      { black: 1621, nonGrey: 12610, nonWhite: 4785, hash: 924561963 },
+      `expected committed trusted IME text to visibly add a deterministic address-bar glyph after xé, got ${JSON.stringify(trustedImeCommitCoverage)}`,
+    );
     assert.equal(trustedImeCommitCoverage.compositionSession.active, false);
     assert.deepEqual(
       trustedImeCommitCoverage.lastInputEvent.detail,
