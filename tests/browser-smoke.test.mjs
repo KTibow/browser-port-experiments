@@ -150,6 +150,10 @@ test('NetSurf public page paints live full-framebuffer pixels', { timeout: 20_00
     await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
     await page.locator('#viewport').waitFor({ state: 'visible' });
 
+    const canvasLocator = page.locator('#viewport');
+    await canvasLocator.click({ position: { x: 32, y: 32 } });
+    await page.keyboard.press('a');
+
     const result = await page.evaluate(() => {
       const canvas = document.querySelector('#viewport');
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -174,6 +178,8 @@ test('NetSurf public page paints live full-framebuffer pixels', { timeout: 20_00
         stride: Number(document.body.dataset.netsurfFramebufferStride),
         state: window.netsurfFramebufferState,
         metadata: document.querySelector('#metadata')?.textContent ?? '',
+        inputDataset: document.body.dataset.netsurfFramebufferInput,
+        canvasTabIndex: canvas.tabIndex,
       };
     });
 
@@ -185,6 +191,10 @@ test('NetSurf public page paints live full-framebuffer pixels', { timeout: 20_00
     assert.equal(result.stride, 2560);
     assert.equal(result.state.presenter, 'full-frame-poll');
     assert.equal(result.state.surface, 'full NetSurf framebuffer frontend nsfb_t RAM surface');
+    assert.match(result.inputDataset, /^(js-canvas-capture-only|fbtk-event-queue)$/);
+    assert.equal(result.canvasTabIndex, 0);
+    assert.ok(result.state.inputEventsCaptured >= 2, `expected canvas input events to be captured, got ${JSON.stringify(result)}`);
+    assert.ok(result.state.inputEventsForwarded >= 0, `expected input forwarding counter, got ${JSON.stringify(result)}`);
     assert.ok(result.state.ptr > 0, `expected exported nsfb_t buffer pointer, got ${JSON.stringify(result)}`);
     assert.ok(result.state.framesCopied >= 1, `expected copied frames, got ${JSON.stringify(result)}`);
     assert.match(result.metadata, /BrowserPortWisp|standalone offline page/i);

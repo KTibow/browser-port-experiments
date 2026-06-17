@@ -34,6 +34,9 @@ test('NetSurf public page exposes the full framebuffer bridge', async () => {
   assert.match(page, /netsurfFramebufferState/);
   assert.match(page, /BrowserPortWisp/);
   assert.match(page, /full-frame-poll/);
+  assert.match(page, /netsurf_framebuffer_input_key/);
+  assert.match(page, /netsurfFramebufferInput/);
+  assert.match(page, /js-canvas-capture-only|fbtk-event-queue/);
   assert.doesNotMatch(page, /nsfb-canvas-probe\.js/);
   assert.doesNotMatch(page, /wss:\/\/anura\.pro/i, 'public NetSurf page should not hard-code the shared Wisp endpoint');
 });

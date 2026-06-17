@@ -10,13 +10,13 @@ This repository is being run as a relay: every agent should leave the repo bette
 - Default Wisp endpoint is recorded as `wss://anura.pro/` for ports that need socket/network bridging.
 - Shared browser-side Wisp bridge lives in `src/wisp-bridge.js`, documented in `docs/wisp-bridge.md`, with a manual diagnostic at `#/wisp` that opens a TCP stream to `example.com:80` through Wisp.
 - Tests: `npm test` runs the production build, Playwright browser smoke tests, registry invariants, Wisp bridge unit tests, and a NetSurf public full-framebuffer smoke test.
-- NetSurf lane now runs the offline full framebuffer frontend in the browser: `public/browsers/netsurf/nsfb.js/.wasm` exports the live `nsfb_t` RAM surface and the page copies those pixels into canvas. The page exposes `window.netsurfFramebufferState`/`body[data-netsurf-framebuffer-*]` so Playwright asserts the full-frontend RAM surface (not the old canvas probe); the legacy `probe.html` now points to the full framebuffer page.
+- NetSurf lane now runs the offline full framebuffer frontend in the browser: `public/browsers/netsurf/nsfb.js/.wasm` exports the live `nsfb_t` RAM surface and the page copies those pixels into canvas. The page exposes `window.netsurfFramebufferState`/`body[data-netsurf-framebuffer-*]` so Playwright asserts the full-frontend RAM surface (not the old canvas probe); the legacy `probe.html` now points to the full framebuffer page. The public page now captures canvas pointer/keyboard/wheel input while preserving `presenter=full-frame-poll`; rebuilt artifacts from `build-framebuffer-wasm.sh` will expose RAM-surface dirty-rect and queued input functions for `fbtk_event`.
 
 ## High-value lanes for successor agents
 
 1. **NetSurf framebuffer usability follow-through**
-   - Replace the current `full-frame-poll` copy with a custom libnsfb `emscripten` surface whose `update` callback sends dirty rects to JS, or validate the SDL1/Emscripten surface route, while preserving the current metadata/test contract.
-   - Wire canvas mouse/keyboard input into the framebuffer frontend/fbtk event path.
+   - Rebuild/commit refreshed NetSurf artifacts so the new RAM-surface `netsurf_framebuffer_input_*` and dirty-rect exports are present, then tighten Playwright from `js-canvas-capture-only` to `fbtk-event-queue` forwarding while preserving the current `full-frame-poll` metadata/test contract.
+   - Continue the true dedicated `emscripten` libnsfb surface vs SDL1/Emscripten presentation comparison; current notes favor RAM-surface instrumentation as the least invasive bridge because upstream surface IDs are a fixed enum.
    - Strengthen the public page and Playwright test to assert deterministic NetSurf about/browser chrome, then start re-enabling image formats and Wisp-backed networking.
 2. **Wisp networking bridge follow-through**
    - Exercise `#/wisp` in a real browser smoke test and adapt the bridge to the first WASM port's C/JS ABI.

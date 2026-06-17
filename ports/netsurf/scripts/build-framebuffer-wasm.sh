@@ -119,7 +119,7 @@ override NETSURF_USE_NSPSL := YES
 override NETSURF_USE_NSLOG := YES
 override NETSURF_FB_FONTLIB := internal
 override NETSURF_FB_FRONTEND := ram
-LDFLAGS += -sUSE_ZLIB -sMODULARIZE=1 -sEXPORT_NAME=createNetSurfFrameBuffer -sENVIRONMENT=web,worker -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 -sEXPORTED_FUNCTIONS=["_netsurf_framebuffer_main","_netsurf_framebuffer_ptr","_netsurf_framebuffer_width","_netsurf_framebuffer_height","_netsurf_framebuffer_stride"] -sEXPORTED_RUNTIME_METHODS=["ccall"]
+LDFLAGS += -sUSE_ZLIB -sMODULARIZE=1 -sEXPORT_NAME=createNetSurfFrameBuffer -sENVIRONMENT=web,worker -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 -sEXPORTED_FUNCTIONS=["_netsurf_framebuffer_main","_netsurf_framebuffer_ptr","_netsurf_framebuffer_width","_netsurf_framebuffer_height","_netsurf_framebuffer_stride","_netsurf_framebuffer_input_key","_netsurf_framebuffer_input_mouse_move","_netsurf_framebuffer_input_mouse_button","_netsurf_framebuffer_dirty_count","_netsurf_framebuffer_dirty_x0","_netsurf_framebuffer_dirty_y0","_netsurf_framebuffer_dirty_x1","_netsurf_framebuffer_dirty_y1"] -sEXPORTED_RUNTIME_METHODS=["ccall"]
 EOF
 
 python3 - "$WORKSPACE/netsurf/content/fetchers/curl.h" <<'PY'
@@ -131,6 +131,160 @@ old = '#include <curl/curl.h>'
 new = '#ifdef WITH_CURL\n#include <curl/curl.h>\n#else\ntypedef void CURLM;\n#endif'
 if old in s:
     p.write_text(s.replace(old, new))
+PY
+
+python3 - "$WORKSPACE/libnsfb/src/surface/ram.c" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text()
+if '#include <emscripten/emscripten.h>' not in s:
+    s = s.replace('#include <stdlib.h>\n', '#include <stdlib.h>\n\n#ifdef __EMSCRIPTEN__\n#include <emscripten/emscripten.h>\n#endif\n')
+old = '''static bool ram_input(nsfb_t *nsfb, nsfb_event_t *event, int timeout)
+{
+    UNUSED(nsfb);
+    UNUSED(event);
+    UNUSED(timeout);
+    return false;
+}
+'''
+new = '''#ifdef __EMSCRIPTEN__
+#define RAM_EVENT_QUEUE_LEN 64
+static nsfb_event_t ram_event_queue[RAM_EVENT_QUEUE_LEN];
+static int ram_event_head;
+static int ram_event_tail;
+static int ram_event_dropped;
+static int ram_dirty_count;
+static nsfb_bbox_t ram_last_dirty;
+
+static bool ram_event_queue_empty(void)
+{
+    return ram_event_head == ram_event_tail;
+}
+
+static int ram_push_event(nsfb_event_t *event)
+{
+    int next_tail = (ram_event_tail + 1) % RAM_EVENT_QUEUE_LEN;
+
+    if (next_tail == ram_event_head) {
+        ram_event_dropped++;
+        return 0;
+    }
+
+    ram_event_queue[ram_event_tail] = *event;
+    ram_event_tail = next_tail;
+    return 1;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_input_key(int keycode, int down)
+{
+    nsfb_event_t event;
+
+    event.type = down ? NSFB_EVENT_KEY_DOWN : NSFB_EVENT_KEY_UP;
+    event.value.keycode = (enum nsfb_key_code_e)keycode;
+    return ram_push_event(&event);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_input_mouse_move(int x, int y)
+{
+    nsfb_event_t event;
+
+    event.type = NSFB_EVENT_MOVE_ABSOLUTE;
+    event.value.vector.x = x;
+    event.value.vector.y = y;
+    event.value.vector.z = 0;
+    return ram_push_event(&event);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_input_mouse_button(int button, int down)
+{
+    nsfb_event_t event;
+
+    if (button < 1 || button > 5) {
+        return 0;
+    }
+
+    event.type = down ? NSFB_EVENT_KEY_DOWN : NSFB_EVENT_KEY_UP;
+    event.value.keycode = (enum nsfb_key_code_e)(NSFB_KEY_MOUSE_1 + button - 1);
+    return ram_push_event(&event);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_dirty_count(void)
+{
+    return ram_dirty_count;
+}
+
+EMSCRIPTEN_KEEPALIVE int netsurf_framebuffer_dirty_x0(void) { return ram_last_dirty.x0; }
+EMSCRIPTEN_KEEPALIVE int netsurf_framebuffer_dirty_y0(void) { return ram_last_dirty.y0; }
+EMSCRIPTEN_KEEPALIVE int netsurf_framebuffer_dirty_x1(void) { return ram_last_dirty.x1; }
+EMSCRIPTEN_KEEPALIVE int netsurf_framebuffer_dirty_y1(void) { return ram_last_dirty.y1; }
+
+static bool ram_input(nsfb_t *nsfb, nsfb_event_t *event, int timeout)
+{
+    UNUSED(nsfb);
+    UNUSED(timeout);
+
+    if (ram_event_queue_empty()) {
+        return false;
+    }
+
+    *event = ram_event_queue[ram_event_head];
+    ram_event_head = (ram_event_head + 1) % RAM_EVENT_QUEUE_LEN;
+    return true;
+}
+
+static int ram_update(nsfb_t *nsfb, nsfb_bbox_t *box)
+{
+    if (box == NULL) {
+        ram_last_dirty.x0 = 0;
+        ram_last_dirty.y0 = 0;
+        ram_last_dirty.x1 = nsfb->width;
+        ram_last_dirty.y1 = nsfb->height;
+    } else {
+        ram_last_dirty = *box;
+    }
+    ram_dirty_count++;
+
+    EM_ASM({
+        if (typeof Module !== 'undefined' && typeof Module.onNetSurfFramebufferDirtyRect === 'function') {
+            Module.onNetSurfFramebufferDirtyRect($0, $1, $2, $3, $4);
+        }
+    }, ram_last_dirty.x0, ram_last_dirty.y0, ram_last_dirty.x1, ram_last_dirty.y1, ram_dirty_count);
+
+    return 0;
+}
+#else
+static bool ram_input(nsfb_t *nsfb, nsfb_event_t *event, int timeout)
+{
+    UNUSED(nsfb);
+    UNUSED(event);
+    UNUSED(timeout);
+    return false;
+}
+
+static int ram_update(nsfb_t *nsfb, nsfb_bbox_t *box)
+{
+    UNUSED(nsfb);
+    UNUSED(box);
+    return 0;
+}
+#endif
+'''
+if old in s:
+    s = s.replace(old, new)
+s = s.replace('''    .input = ram_input,
+    .geometry = ram_set_geometry,
+};
+''', '''    .input = ram_input,
+    .geometry = ram_set_geometry,
+    .update = ram_update,
+};
+''')
+p.write_text(s)
 PY
 
 python3 - "$WORKSPACE/netsurf/frontends/framebuffer/framebuffer.c" "$WORKSPACE/netsurf/frontends/framebuffer/gui.c" <<'PY'
@@ -298,6 +452,8 @@ Built by ports/netsurf/scripts/build-framebuffer-wasm.sh
 Frontend: full NetSurf framebuffer with libnsfb RAM surface
 JS entry: createNetSurfFrameBuffer; page calls netsurf_framebuffer_main and copies live nsfb_t pixels
 Canvas presenter: public page polls full-frame pixels and exposes window.netsurfFramebufferState/data-* metadata
+Input: public page captures canvas pointer/keyboard/wheel events; rebuilt artifacts export a libnsfb RAM-surface event queue consumed by fbtk_event
+Dirty rects: rebuilt artifacts add a libnsfb RAM-surface update callback while the public metadata contract remains presenter=full-frame-poll
 Networking: CURL disabled; offline about:, data:, file/resource fetchers only; future socket fetcher should use BrowserPortWisp from the app with no endpoint hard-coded in C/WASM
 EOF
 cat > "$PUBLIC_DIR/probe.html" <<'EOF'
