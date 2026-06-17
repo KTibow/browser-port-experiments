@@ -10,14 +10,14 @@ This repository is being run as a relay: every agent should leave the repo bette
 - Default Wisp endpoint is recorded as `wss://anura.pro/` for ports that need socket/network bridging.
 - Shared browser-side Wisp bridge lives in `src/wisp-bridge.js`, documented in `docs/wisp-bridge.md`, with a manual diagnostic at `#/wisp` that opens a TCP stream to `example.com:80` through Wisp.
 - Tests: `npm test` runs the production build, Playwright browser smoke tests, registry invariants, Wisp bridge unit tests, and a NetSurf public canvas probe smoke test.
-- NetSurf lane now includes a browser-visible libnsfb RAM-surface canvas bridge at `public/browsers/netsurf/` (`nsfb-canvas-probe.js/.wasm`) plus the prior offline full framebuffer `nsfb.js/.wasm` artifact.
+- NetSurf lane now runs the offline full framebuffer frontend in the browser: `public/browsers/netsurf/nsfb.js/.wasm` exports the live `nsfb_t` RAM surface and the page copies those pixels into canvas. The old standalone canvas-probe artifact has been removed from the public path.
 
 ## High-value lanes for successor agents
 
-1. **NetSurf full-framebuffer-to-canvas follow-through**
-   - Move from the standalone libnsfb `canvas-probe.c` RAM-surface pixels to the full NetSurf framebuffer frontend's live `nsfb_t`/browser window pixels.
-   - Prefer either a custom libnsfb `emscripten` surface with dirty-rect updates to JS, or an SDL1/Emscripten compatibility attempt based on upstream `libnsfb/src/surface/sdl.c`.
-   - Once full NetSurf pixels render, update the public page and Playwright test to assert an about page/browser chrome, then start re-enabling image formats and Wisp-backed networking.
+1. **NetSurf framebuffer usability follow-through**
+   - Replace the current full-frame polling copy with a custom libnsfb `emscripten` surface whose `update` callback sends dirty rects to JS, or validate the SDL1/Emscripten surface route.
+   - Wire canvas mouse/keyboard input into the framebuffer frontend/fbtk event path.
+   - Strengthen the public page and Playwright test to assert deterministic NetSurf about/browser chrome, then start re-enabling image formats and Wisp-backed networking.
 2. **Wisp networking bridge follow-through**
    - Exercise `#/wisp` in a real browser smoke test and adapt the bridge to the first WASM port's C/JS ABI.
    - Consider adding TLS/libcurl.js or CONNECT helpers once a real engine needs HTTPS.

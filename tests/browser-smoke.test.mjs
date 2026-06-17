@@ -143,26 +143,41 @@ test('root page renders registry launch links and work queue', { timeout: 15_000
   }
 });
 
-test('NetSurf public canvas probe paints non-empty framebuffer pixels', { timeout: 15_000 }, async () => {
+test('NetSurf public page paints live full-framebuffer pixels', { timeout: 20_000 }, async () => {
   const page = await newAppPage();
   try {
     await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
-    await page.locator('body[data-netsurf-canvas-visible="true"]').waitFor({ state: 'attached' });
+    await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
     await page.locator('#viewport').waitFor({ state: 'visible' });
 
-    const sample = await page.evaluate(() => {
+    const result = await page.evaluate(() => {
       const canvas = document.querySelector('#viewport');
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      const points = [
-        ctx.getImageData(48, 48, 1, 1).data,
-        ctx.getImageData(220, 60, 1, 1).data,
-        ctx.getImageData(360, 60, 1, 1).data,
-      ].map((data) => Array.from(data));
-      return points;
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let opaque = 0;
+      let nonWhite = 0;
+      let nonBlack = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] === 255) opaque += 1;
+        if (data[i] < 245 || data[i + 1] < 245 || data[i + 2] < 245) nonWhite += 1;
+        if (data[i] > 8 || data[i + 1] > 8 || data[i + 2] > 8) nonBlack += 1;
+      }
+      return {
+        width: canvas.width,
+        height: canvas.height,
+        opaque,
+        nonWhite,
+        nonBlack,
+        status: document.querySelector('#status')?.textContent ?? '',
+      };
     });
 
-    assert.ok(sample.every((rgba) => rgba[3] === 255), `expected opaque framebuffer samples, got ${JSON.stringify(sample)}`);
-    assert.notDeepEqual(sample[0].slice(0, 3), sample[1].slice(0, 3), 'expected varied colours from libnsfb render');
+    assert.equal(result.width, 640);
+    assert.equal(result.height, 480);
+    assert.match(result.status, /live NetSurf framebuffer/i);
+    assert.ok(result.opaque > 250_000, `expected opaque NetSurf framebuffer, got ${JSON.stringify(result)}`);
+    assert.ok(result.nonWhite > 1_000, `expected browser chrome/content contrast, got ${JSON.stringify(result)}`);
+    assert.ok(result.nonBlack > 1_000, `expected non-empty NetSurf pixels, got ${JSON.stringify(result)}`);
   } finally {
     await closePage(page);
   }

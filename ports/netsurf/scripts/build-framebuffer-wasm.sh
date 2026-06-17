@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Reproducible NetSurf framebuffer -> wasm32-unknown-emscripten probe.
-# This script intentionally builds outside git-tracked source trees by default.
-# It was validated on Ubuntu 24.04 GitHub Actions with Debian's emscripten
-# package (3.1.6~dfsg-7).
+# Reproducible NetSurf framebuffer -> wasm32-unknown-emscripten build.
+# Validated on Ubuntu 24.04 with Debian Emscripten 3.1.6.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 PORT_DIR="$ROOT_DIR/ports/netsurf"
@@ -33,9 +31,6 @@ fi
 
 mkdir -p "$BIN_DIR" "$WORKSPACE" "$ARTIFACT_DIR" "$PUBLIC_DIR"
 
-# NetSurf's shared buildsystem recognises clang/gcc by the first token printed
-# by --version. Debian emcc prints "emcc", so wrap emcc/em++ with a clang-like
-# version response while preserving -dumpmachine for env.sh validation.
 cat > "$BIN_DIR/$HOST_TRIPLE-gcc" <<'EOF'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -66,8 +61,6 @@ EOF
 chmod +x "$BIN_DIR"/*
 export PATH="$BIN_DIR:$PATH"
 
-# Debian's emscripten package ships a frozen root config. Copy it and unfreeze
-# so ports such as zlib can be populated in the user's cache.
 if [[ -f /usr/share/emscripten/.emscripten ]]; then
   EM_CONFIG_FILE="$WORK_DIR/emscripten-config.py"
   cp /usr/share/emscripten/.emscripten "$EM_CONFIG_FILE"
@@ -75,9 +68,7 @@ if [[ -f /usr/share/emscripten/.emscripten ]]; then
 from pathlib import Path
 import sys
 p = Path(sys.argv[1])
-s = p.read_text()
-s = s.replace('FROZEN_CACHE = True', 'FROZEN_CACHE = False')
-p.write_text(s)
+p.write_text(p.read_text().replace('FROZEN_CACHE = True', 'FROZEN_CACHE = False'))
 PY
   export EM_CONFIG="$EM_CONFIG_FILE"
 fi
@@ -86,11 +77,6 @@ if [[ ! -d "$WORKSPACE/netsurf/.git" ]]; then
   git clone --depth 1 "$REPO_BASE_URI/netsurf.git" "$WORKSPACE/netsurf"
 fi
 
-# shellcheck source=/dev/null
-# env.sh probes for optional commands using failing command substitutions and
-# references unset variables on current NetSurf HEAD. Temporarily relax -e/-u
-# while sourcing it. Keep nounset off afterwards because ns-clone is a shell
-# function from env.sh and still references optional unset variables.
 export HOST="$HOST_TRIPLE"
 export TARGET_WORKSPACE="$WORKSPACE"
 export REPO_BASE_URI="$REPO_BASE_URI"
@@ -105,9 +91,6 @@ if [[ "$ENV_STATUS" -ne 0 ]]; then
 fi
 
 ns-clone --shallow -d
-
-# Native build tools, then wasm libraries. libdom's XML bindings need expat or
-# libxml2; disable them for the first offline/about:data framebuffer milestone.
 ns-make-tools install
 printf 'WITH_EXPAT_BINDING := no\nWITH_LIBXML_BINDING := no\n' > "$WORKSPACE/libdom/Makefile.config.override"
 for repo in \
@@ -128,7 +111,7 @@ override NETSURF_USE_JPEGXL := NO
 override NETSURF_USE_PNG := NO
 override NETSURF_USE_WEBP := NO
 override NETSURF_USE_DUKTAPE := NO
-override NETSURF_USE_LIBICONV_PLUG := NO
+override NETSURF_USE_LIBICONV_PLUG := YES
 override NETSURF_USE_UTF8PROC := NO
 override NETSURF_USE_BMP := YES
 override NETSURF_USE_GIF := YES
@@ -136,10 +119,9 @@ override NETSURF_USE_NSPSL := YES
 override NETSURF_USE_NSLOG := YES
 override NETSURF_FB_FONTLIB := internal
 override NETSURF_FB_FRONTEND := ram
+LDFLAGS += -sUSE_ZLIB -sMODULARIZE=1 -sEXPORT_NAME=createNetSurfFrameBuffer -sENVIRONMENT=web,worker -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 -sEXPORTED_FUNCTIONS=["_netsurf_framebuffer_main","_netsurf_framebuffer_ptr","_netsurf_framebuffer_width","_netsurf_framebuffer_height","_netsurf_framebuffer_stride"] -sEXPORTED_RUNTIME_METHODS=["ccall"]
 EOF
 
-# With curl disabled, fetch.c still includes this registration header for the
-# CURLM declaration. Keep the patch as small and obvious as possible.
 python3 - "$WORKSPACE/netsurf/content/fetchers/curl.h" <<'PY'
 from pathlib import Path
 import sys
@@ -151,8 +133,148 @@ if old in s:
     p.write_text(s.replace(old, new))
 PY
 
-# Populate Emscripten's zlib port up front, then link with zlib. NetSurf's
-# hashtable utility includes zlib.h even in the offline/curl-disabled build.
+python3 - "$WORKSPACE/netsurf/frontends/framebuffer/framebuffer.c" "$WORKSPACE/netsurf/frontends/framebuffer/gui.c" <<'PY'
+from pathlib import Path
+import sys
+framebuffer = Path(sys.argv[1])
+gui = Path(sys.argv[2])
+
+s = framebuffer.read_text()
+if '#include <emscripten/emscripten.h>' not in s:
+    s = s.replace('#include <libnsfb_cursor.h>\n', '#include <libnsfb_cursor.h>\n\n#ifdef __EMSCRIPTEN__\n#include <emscripten/emscripten.h>\n#endif\n')
+marker = '/* netsurf framebuffer library handle */\nstatic nsfb_t *nsfb;\n'
+exports = '''
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_ptr(void)
+{
+    uint8_t *buffer = NULL;
+    int stride = 0;
+
+    if (nsfb == NULL) return 0;
+    if (nsfb_get_buffer(nsfb, &buffer, &stride) != 0) return 0;
+    return (int)(uintptr_t)buffer;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_width(void)
+{
+    int width = 0;
+    if (nsfb != NULL) nsfb_get_geometry(nsfb, &width, NULL, NULL);
+    return width;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_height(void)
+{
+    int height = 0;
+    if (nsfb != NULL) nsfb_get_geometry(nsfb, NULL, &height, NULL);
+    return height;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_stride(void)
+{
+    uint8_t *buffer = NULL;
+    int stride = 0;
+
+    if (nsfb == NULL) return 0;
+    if (nsfb_get_buffer(nsfb, &buffer, &stride) != 0) return 0;
+    return stride;
+}
+#endif
+
+'''
+if 'netsurf_framebuffer_ptr' not in s:
+    s = s.replace(marker, marker + exports)
+framebuffer.write_text(s)
+
+s = gui.read_text()
+if '#include <emscripten/emscripten.h>' not in s:
+    s = s.replace('#include <nsutils/time.h>\n', '#include <nsutils/time.h>\n\n#ifdef __EMSCRIPTEN__\n#include <emscripten/emscripten.h>\n#endif\n')
+old = '''static void framebuffer_run(void)
+{
+\tnsfb_event_t event;
+\tint timeout; /* timeout in miliseconds */
+
+\twhile (fb_complete != true) {
+\t\t/* run the scheduler and discover how long to wait for
+\t\t * the next event.
+\t\t */
+\t\ttimeout = schedule_run();
+
+\t\t/* if redraws are pending do not wait for event,
+\t\t * return immediately
+\t\t */
+\t\tif (fbtk_get_redraw_pending(fbtk))
+\t\t\ttimeout = 0;
+
+\t\tif (fbtk_event(fbtk, &event, timeout)) {
+\t\t\tif ((event.type == NSFB_EVENT_CONTROL) &&
+\t\t\t    (event.value.controlcode ==  NSFB_CONTROL_QUIT))
+\t\t\t\tfb_complete = true;
+\t\t}
+
+\t\tfbtk_redraw(fbtk);
+\t}
+}
+'''
+new = '''static void framebuffer_run_iteration(void)
+{
+\tnsfb_event_t event;
+\tint timeout; /* timeout in miliseconds */
+
+\ttimeout = schedule_run();
+\tif (fbtk_get_redraw_pending(fbtk))
+\t\ttimeout = 0;
+
+\tif (fbtk_event(fbtk, &event, timeout)) {
+\t\tif ((event.type == NSFB_EVENT_CONTROL) &&
+\t\t    (event.value.controlcode ==  NSFB_CONTROL_QUIT))
+\t\t\tfb_complete = true;
+\t}
+
+\tfbtk_redraw(fbtk);
+}
+
+static void framebuffer_run(void)
+{
+#ifdef __EMSCRIPTEN__
+\temscripten_set_main_loop(framebuffer_run_iteration, 0, true);
+#else
+\twhile (fb_complete != true) {
+\t\tframebuffer_run_iteration();
+\t}
+#endif
+}
+'''
+if old in s:
+    s = s.replace(old, new)
+wrapper = '''
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_main(void)
+{
+\tchar arg0[] = "nsfb";
+\tchar arg1[] = "-f";
+\tchar arg2[] = "ram";
+\tchar arg3[] = "-w";
+\tchar arg4[] = "640";
+\tchar arg5[] = "-h";
+\tchar arg6[] = "480";
+\tchar arg7[] = "about:blank";
+\tchar *argv[] = { arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7 };
+
+\treturn main(8, argv);
+}
+#endif
+
+'''
+if 'netsurf_framebuffer_main' not in s:
+    s = s.replace('\nvoid gui_resize(fbtk_widget_t *root, int width, int height)\n', '\n' + wrapper + 'void gui_resize(fbtk_widget_t *root, int width, int height)\n')
+gui.write_text(s)
+PY
+
 emcc -sUSE_ZLIB -x c - -o "$WORK_DIR/zlib-probe.js" >/dev/null 2>&1 <<'EOF'
 #include <zlib.h>
 int main(void) { return (int)zlibVersion()[0]; }
@@ -164,121 +286,15 @@ make -C "$WORKSPACE/netsurf" \
   PREFIX="$PREFIX" \
   CC="$HOST_TRIPLE-gcc" \
   CXX="$HOST_TRIPLE-g++" \
-  LDFLAGS='-sUSE_ZLIB -sERROR_ON_UNDEFINED_SYMBOLS=0 -sEXPORTED_RUNTIME_METHODS=ccall,cwrap' \
   "-j$JOBS"
-
-# Browser-visible milestone: export a libnsfb RAM surface as a linear RGBA
-# buffer. This is intentionally separate from the NetSurf frontend executable
-# until the framebuffer frontend can keep its browser_window/nsfb pointer alive
-# for JS (or a dedicated emscripten surface lands in libnsfb).
-emcc "$PORT_DIR/canvas-probe.c" \
-  -Wl,--whole-archive "$PREFIX/lib/libnsfb.a" -Wl,--no-whole-archive \
-  -I"$PREFIX/include" \
-  -O2 \
-  --no-entry \
-  -sMODULARIZE=1 \
-  -sEXPORT_NAME=createNsfbCanvasProbe \
-  -sENVIRONMENT=web,worker \
-  -sALLOW_MEMORY_GROWTH=1 \
-  -sEXPORTED_FUNCTIONS='["_netsurf_canvas_probe_init","_netsurf_canvas_probe_render","_netsurf_canvas_probe_ptr","_netsurf_canvas_probe_width","_netsurf_canvas_probe_height","_netsurf_canvas_probe_stride"]' \
-  -sEXPORTED_RUNTIME_METHODS='["ccall"]' \
-  -o "$ARTIFACT_DIR/nsfb-canvas-probe.js"
 
 cp "$WORKSPACE/netsurf/nsfb" "$ARTIFACT_DIR/nsfb.js"
 cp "$WORKSPACE/netsurf/nsfb.wasm" "$ARTIFACT_DIR/nsfb.wasm"
 cp "$ARTIFACT_DIR/nsfb.js" "$PUBLIC_DIR/nsfb.js"
 cp "$ARTIFACT_DIR/nsfb.wasm" "$PUBLIC_DIR/nsfb.wasm"
-cp "$ARTIFACT_DIR/nsfb-canvas-probe.js" "$PUBLIC_DIR/nsfb-canvas-probe.js"
-cp "$ARTIFACT_DIR/nsfb-canvas-probe.wasm" "$PUBLIC_DIR/nsfb-canvas-probe.wasm"
-
-cat > "$PUBLIC_DIR/index.html" <<'HTML'
-<!doctype html>
-<meta charset="utf-8" />
-<title>NetSurf framebuffer canvas probe</title>
-<style>
-  :root { color-scheme: dark; }
-  body { margin: 0; font: 15px system-ui, sans-serif; background: #10131a; color: #f3f6fb; }
-  main { max-width: 1040px; margin: 0 auto; padding: 24px; }
-  canvas { display: block; width: 100%; max-width: 960px; height: auto; image-rendering: pixelated; background: #05070a; border: 1px solid #2b3342; border-radius: 10px; box-shadow: 0 18px 60px #0007; }
-  pre { min-height: 7rem; padding: 16px; overflow: auto; background: #05070a; border: 1px solid #2b3342; border-radius: 10px; }
-  .note { color: #b8c0cc; line-height: 1.45; }
-  .ok { color: #4fd1c5; font-weight: 700; }
-</style>
-<main>
-  <h1>NetSurf framebuffer canvas probe</h1>
-  <p class="note">This page now displays pixels from a wasm-built <code>libnsfb</code> RAM surface in an HTML canvas. It is still an offline probe: the full NetSurf framebuffer executable (<code>nsfb.js</code>) is checked in, but the browser page uses a small exported libnsfb surface harness until NetSurf's framebuffer frontend exposes its live surface or gains a dedicated Emscripten surface.</p>
-  <canvas id="viewport" width="640" height="360" aria-label="NetSurf libnsfb framebuffer pixels"></canvas>
-  <p id="status" class="note">Loading nsfb-canvas-probe.js…</p>
-  <pre id="log"></pre>
-</main>
-<script src="./nsfb-canvas-probe.js"></script>
-<script>
-  const canvas = document.querySelector('#viewport');
-  const status = document.querySelector('#status');
-  const log = document.querySelector('#log');
-  const ctx = canvas.getContext('2d', { alpha: false });
-  const image = ctx.createImageData(canvas.width, canvas.height);
-
-  const appendLog = (line) => { log.textContent += `${line}\n`; };
-
-  function copyFramebufferToCanvas(module) {
-    const ptr = module.ccall('netsurf_canvas_probe_ptr', 'number', [], []);
-    const width = module.ccall('netsurf_canvas_probe_width', 'number', [], []);
-    const height = module.ccall('netsurf_canvas_probe_height', 'number', [], []);
-    const stride = module.ccall('netsurf_canvas_probe_stride', 'number', [], []);
-    const heap = module.HEAPU8;
-
-    for (let y = 0; y < height; y += 1) {
-      const row = heap.subarray(ptr + y * stride, ptr + y * stride + width * 4);
-      image.data.set(row, y * width * 4);
-    }
-    ctx.putImageData(image, 0, 0);
-  }
-
-  async function boot() {
-    if (typeof createNsfbCanvasProbe !== 'function') {
-      throw new Error('createNsfbCanvasProbe was not defined by nsfb-canvas-probe.js');
-    }
-
-    const module = await createNsfbCanvasProbe({
-      locateFile: (path) => path,
-      print: appendLog,
-      printErr: (line) => appendLog(`[stderr] ${line}`),
-    });
-
-    const initResult = module.ccall('netsurf_canvas_probe_init', 'number', ['number', 'number'], [canvas.width, canvas.height]);
-    if (initResult !== 0) {
-      throw new Error(`libnsfb RAM surface init failed with code ${initResult}`);
-    }
-
-    let tick = 0;
-    const render = () => {
-      const renderResult = module.ccall('netsurf_canvas_probe_render', 'number', ['number'], [tick]);
-      if (renderResult !== 0) {
-        throw new Error(`libnsfb render failed with code ${renderResult}`);
-      }
-      copyFramebufferToCanvas(module);
-      if (tick === 0) {
-        status.innerHTML = '<span class="ok">Visible:</span> copied libnsfb RAM framebuffer bytes into Canvas ImageData.';
-        document.body.dataset.netsurfCanvasVisible = 'true';
-      }
-      tick = (tick + 1) & 0xffff;
-      requestAnimationFrame(render);
-    };
-    render();
-  }
-
-  boot().catch((error) => {
-    status.textContent = `NetSurf canvas probe failed: ${error.message}`;
-    appendLog(error.stack || String(error));
-    document.body.dataset.netsurfCanvasVisible = 'error';
-  });
-</script>
-HTML
+cp "$ROOT_DIR/public/browsers/netsurf/index.html" "$PUBLIC_DIR/index.html"
 
 ls -lh \
   "$ARTIFACT_DIR/nsfb.js" \
   "$ARTIFACT_DIR/nsfb.wasm" \
-  "$ARTIFACT_DIR/nsfb-canvas-probe.js" \
-  "$ARTIFACT_DIR/nsfb-canvas-probe.wasm" \
   "$PUBLIC_DIR/index.html"

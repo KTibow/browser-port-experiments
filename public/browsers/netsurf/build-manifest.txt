@@ -1,5 +1,4 @@
-Built by ports/netsurf/build-wasm.sh
-NetSurf commit: 39da3c3a40af4566d86500ff3052dfdc7f9a0378
-Frontend: framebuffer with libnsfb RAM surface
+Built by ports/netsurf/scripts/build-framebuffer-wasm.sh
+Frontend: full NetSurf framebuffer with libnsfb RAM surface
+JS entry: createNetSurfFrameBuffer; page calls netsurf_framebuffer_main and copies live nsfb_t pixels
 Networking: CURL disabled; offline about:, data:, file/resource fetchers only
-Generated: 2026-06-17T03:10:37Z

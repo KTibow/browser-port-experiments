@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>NetSurf framebuffer canvas probe</title>
+    <title>NetSurf framebuffer WASM</title>
     <style>
       :root { color-scheme: dark; }
       body { margin: 0; font: 15px system-ui, sans-serif; background: #10131a; color: #f3f6fb; }
@@ -15,83 +15,107 @@
       .note { color: #b8c0cc; line-height: 1.45; }
       .panel { background: #111827; border: 1px solid #334155; border-radius: 16px; padding: 1rem; margin: 1rem 0; }
       .ok { color: #4fd1c5; font-weight: 700; }
+      .warn { color: #facc15; font-weight: 700; }
     </style>
   </head>
   <body>
     <main>
       <p><a href="../..">← Browser Port Experiments</a></p>
-      <h1>NetSurf framebuffer canvas probe</h1>
+      <h1>NetSurf framebuffer WASM</h1>
       <section class="panel">
         <p class="note">
-          This page now displays pixels from a wasm-built <code>libnsfb</code> RAM surface in an HTML canvas.
-          It is still an offline probe: the full NetSurf framebuffer executable (<code>nsfb.js</code>) is checked in,
-          but the browser page uses a small exported libnsfb surface harness until NetSurf's framebuffer frontend
-          exposes its live surface or gains a dedicated Emscripten surface.
+          This page runs the offline NetSurf framebuffer frontend compiled to WASM and copies the live
+          <code>nsfb_t</code> RAM framebuffer into Canvas <code>ImageData</code>. Networking is intentionally disabled;
+          the current command line is <code>-f ram -w 640 -h 480 about:blank</code>.
         </p>
-        <p class="note">Full NetSurf command line currently used for the non-visible executable: <code>-f ram -w 640 -h 480 about:blank</code>.</p>
+        <p id="status" class="note">Loading nsfb.js…</p>
       </section>
-      <canvas id="viewport" width="640" height="360" aria-label="NetSurf libnsfb framebuffer pixels"></canvas>
-      <p id="status" class="note">Loading nsfb-canvas-probe.js…</p>
+      <canvas id="viewport" width="640" height="480" aria-label="NetSurf framebuffer pixels"></canvas>
       <section class="panel">
         <h2>Runtime log</h2>
         <pre id="log" aria-live="polite"></pre>
       </section>
     </main>
-    <script src="./nsfb-canvas-probe.js"></script>
+    <script src="./nsfb.js"></script>
     <script>
       const canvas = document.querySelector('#viewport');
       const status = document.querySelector('#status');
       const log = document.querySelector('#log');
-      const ctx = canvas.getContext('2d', { alpha: false });
-      const image = ctx.createImageData(canvas.width, canvas.height);
+      const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+      let image = ctx.createImageData(canvas.width, canvas.height);
 
       const appendLog = (line) => {
         log.textContent += `${line}\n`;
         log.scrollTop = log.scrollHeight;
       };
 
-      function copyFramebufferToCanvas(module) {
-        const ptr = module.ccall('netsurf_canvas_probe_ptr', 'number', [], []);
-        const width = module.ccall('netsurf_canvas_probe_width', 'number', [], []);
-        const height = module.ccall('netsurf_canvas_probe_height', 'number', [], []);
-        const stride = module.ccall('netsurf_canvas_probe_stride', 'number', [], []);
-        const heap = module.HEAPU8;
+      function exported(module, name) {
+        return module[`_${name}`] || (() => module.ccall(name, 'number', [], []));
+      }
 
+      function copyFramebufferToCanvas(module) {
+        const ptr = exported(module, 'netsurf_framebuffer_ptr')();
+        const width = exported(module, 'netsurf_framebuffer_width')();
+        const height = exported(module, 'netsurf_framebuffer_height')();
+        const stride = exported(module, 'netsurf_framebuffer_stride')();
+        if (!ptr || !width || !height || !stride) return false;
+
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+          image = ctx.createImageData(width, height);
+        }
+
+        const heap = module.HEAPU8;
         for (let y = 0; y < height; y += 1) {
-          const row = heap.subarray(ptr + y * stride, ptr + y * stride + width * 4);
-          image.data.set(row, y * width * 4);
+          const src = ptr + y * stride;
+          const dst = y * width * 4;
+          for (let x = 0; x < width; x += 1) {
+            const s = src + x * 4;
+            const d = dst + x * 4;
+            // NetSurf's 32bpp framebuffer frontend requests XRGB8888. In wasm
+            // little-endian memory that is B,G,R,X; Canvas wants R,G,B,A.
+            image.data[d] = heap[s + 2];
+            image.data[d + 1] = heap[s + 1];
+            image.data[d + 2] = heap[s];
+            image.data[d + 3] = 255;
+          }
         }
         ctx.putImageData(image, 0, 0);
+        return true;
       }
 
       async function boot() {
-        if (typeof createNsfbCanvasProbe !== 'function') {
-          throw new Error('createNsfbCanvasProbe was not defined by nsfb-canvas-probe.js');
+        if (typeof createNetSurfFrameBuffer !== 'function') {
+          throw new Error('createNetSurfFrameBuffer was not defined by nsfb.js');
         }
 
-        const module = await createNsfbCanvasProbe({
+        const module = await createNetSurfFrameBuffer({
           locateFile: (path) => path,
           print: appendLog,
           printErr: (line) => appendLog(`[stderr] ${line}`),
+          noExitRuntime: true,
         });
 
-        const initResult = module.ccall('netsurf_canvas_probe_init', 'number', ['number', 'number'], [canvas.width, canvas.height]);
-        if (initResult !== 0) {
-          throw new Error(`libnsfb RAM surface init failed with code ${initResult}`);
+        try {
+          module.ccall('netsurf_framebuffer_main', 'number', [], []);
+        } catch (error) {
+          // emscripten_set_main_loop(..., simulateInfiniteLoop=true) unwinds
+          // the C stack once the browser-driven loop is installed.
+          if (String(error) !== 'unwind') throw error;
         }
 
-        let tick = 0;
+        let visible = false;
+        let ticks = 0;
         const render = () => {
-          const renderResult = module.ccall('netsurf_canvas_probe_render', 'number', ['number'], [tick]);
-          if (renderResult !== 0) {
-            throw new Error(`libnsfb render failed with code ${renderResult}`);
+          ticks += 1;
+          if (copyFramebufferToCanvas(module) && !visible) {
+            visible = true;
+            status.innerHTML = '<span class="ok">Visible:</span> copied live NetSurf framebuffer bytes into Canvas ImageData.';
+            document.body.dataset.netsurfFramebufferVisible = 'true';
+          } else if (!visible && ticks > 120) {
+            status.innerHTML = '<span class="warn">Waiting:</span> NetSurf module loaded, but no framebuffer pointer is exported yet.';
           }
-          copyFramebufferToCanvas(module);
-          if (tick === 0) {
-            status.innerHTML = '<span class="ok">Visible:</span> copied libnsfb RAM framebuffer bytes into Canvas ImageData.';
-            document.body.dataset.netsurfCanvasVisible = 'true';
-          }
-          tick = (tick + 1) & 0xffff;
           requestAnimationFrame(render);
         };
         render();
@@ -100,18 +124,18 @@
       window.addEventListener('error', (event) => {
         status.textContent = 'JavaScript error';
         appendLog(`[error] ${event.message}`);
-        document.body.dataset.netsurfCanvasVisible = 'error';
+        document.body.dataset.netsurfFramebufferVisible = 'error';
       });
       window.addEventListener('unhandledrejection', (event) => {
         status.textContent = 'Promise rejection';
         appendLog(`[rejection] ${event.reason}`);
-        document.body.dataset.netsurfCanvasVisible = 'error';
+        document.body.dataset.netsurfFramebufferVisible = 'error';
       });
 
       boot().catch((error) => {
-        status.textContent = `NetSurf canvas probe failed: ${error.message}`;
+        status.textContent = `NetSurf framebuffer failed: ${error.message}`;
         appendLog(error.stack || String(error));
-        document.body.dataset.netsurfCanvasVisible = 'error';
+        document.body.dataset.netsurfFramebufferVisible = 'error';
       });
     </script>
   </body>
