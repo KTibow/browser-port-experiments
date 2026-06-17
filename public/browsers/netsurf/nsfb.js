@@ -62,6 +62,24 @@ Module['ready'] = new Promise(function(resolve, reject) {
       }
     
 
+      if (!Object.getOwnPropertyDescriptor(Module['ready'], '_netsurf_framebuffer_push_key')) {
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_push_key', { configurable: true, get: function() { abort('You are getting _netsurf_framebuffer_push_key on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_push_key', { configurable: true, set: function() { abort('You are setting _netsurf_framebuffer_push_key on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+      }
+    
+
+      if (!Object.getOwnPropertyDescriptor(Module['ready'], '_netsurf_framebuffer_push_mouse')) {
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_push_mouse', { configurable: true, get: function() { abort('You are getting _netsurf_framebuffer_push_mouse on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_push_mouse', { configurable: true, set: function() { abort('You are setting _netsurf_framebuffer_push_mouse on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+      }
+    
+
+      if (!Object.getOwnPropertyDescriptor(Module['ready'], '_netsurf_framebuffer_push_motion')) {
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_push_motion', { configurable: true, get: function() { abort('You are getting _netsurf_framebuffer_push_motion on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_push_motion', { configurable: true, set: function() { abort('You are setting _netsurf_framebuffer_push_motion on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+      }
+    
+
       if (!Object.getOwnPropertyDescriptor(Module['ready'], '___stdio_exit')) {
         Object.defineProperty(Module['ready'], '___stdio_exit', { configurable: true, get: function() { abort('You are getting ___stdio_exit on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
         Object.defineProperty(Module['ready'], '___stdio_exit', { configurable: true, set: function() { abort('You are setting ___stdio_exit on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
@@ -1667,7 +1685,7 @@ var tempI64;
 var ASM_CONSTS = {
   
 };
-
+function netsurf_emscripten_surface_update_js(ptr,stride,width,height,x,y,w,h){ if (Module.netsurfOnFramebufferUpdate) { Module.netsurfOnFramebufferUpdate(ptr, stride, width, height, x, y, w, h); } }
 
 
 
@@ -6673,6 +6691,7 @@ var asmLibraryArg = {
   "fd_seek": _fd_seek,
   "fd_write": _fd_write,
   "gettimeofday": _gettimeofday,
+  "netsurf_emscripten_surface_update_js": netsurf_emscripten_surface_update_js,
   "setTempRet0": _setTempRet0,
   "strftime": _strftime,
   "time": _time
@@ -6701,6 +6720,15 @@ var _netsurf_framebuffer_stride = Module["_netsurf_framebuffer_stride"] = create
 
 /** @type {function(...*):?} */
 var _netsurf_framebuffer_main = Module["_netsurf_framebuffer_main"] = createExportWrapper("netsurf_framebuffer_main");
+
+/** @type {function(...*):?} */
+var _netsurf_framebuffer_push_key = Module["_netsurf_framebuffer_push_key"] = createExportWrapper("netsurf_framebuffer_push_key");
+
+/** @type {function(...*):?} */
+var _netsurf_framebuffer_push_mouse = Module["_netsurf_framebuffer_push_mouse"] = createExportWrapper("netsurf_framebuffer_push_mouse");
+
+/** @type {function(...*):?} */
+var _netsurf_framebuffer_push_motion = Module["_netsurf_framebuffer_push_motion"] = createExportWrapper("netsurf_framebuffer_push_motion");
 
 /** @type {function(...*):?} */
 var ___stdio_exit = Module["___stdio_exit"] = createExportWrapper("__stdio_exit");
@@ -6749,7 +6777,7 @@ var dynCall_jiji = Module["dynCall_jiji"] = createExportWrapper("dynCall_jiji");
 unexportedRuntimeFunction('intArrayFromString', false);
 unexportedRuntimeFunction('intArrayToString', false);
 Module["ccall"] = ccall;
-unexportedRuntimeFunction('cwrap', false);
+Module["cwrap"] = cwrap;
 unexportedRuntimeFunction('setValue', false);
 unexportedRuntimeFunction('getValue', false);
 unexportedRuntimeFunction('allocate', false);

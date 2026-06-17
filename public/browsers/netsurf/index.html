@@ -27,16 +27,17 @@
       <h1>NetSurf framebuffer WASM</h1>
       <section class="panel">
         <p class="note">
-          This page runs the offline NetSurf framebuffer frontend compiled to WASM and copies the live
-          <code>nsfb_t</code> RAM framebuffer into Canvas <code>ImageData</code>. This is the full NetSurf
-          framebuffer frontend, not the earlier standalone canvas probe. Networking is intentionally disabled;
-          future socket work should consume <code>BrowserPortWisp</code> from the host app rather than baking an endpoint
-          into the WASM artifact. The current command line is <code>-f ram -w 640 -h 480 about:blank</code>.
+          This page runs the offline full NetSurf framebuffer frontend compiled to WASM with a small
+          <code>libnsfb</code> Emscripten surface. NetSurf's own framebuffer update callback copies only dirty
+          rectangles into Canvas <code>ImageData</code>, and canvas mouse/keyboard events are queued back into
+          <code>fbtk</code>/<code>libnsfb</code>. Networking is intentionally disabled; future socket work should consume
+          <code>BrowserPortWisp</code> from the host app rather than baking an endpoint into the WASM artifact.
+          The current command line is <code>-f emscripten -w 640 -h 480 about:blank</code>.
         </p>
         <p id="status" class="note">Loading nsfb.js…</p>
       </section>
       <canvas id="viewport" width="640" height="480" tabindex="0" aria-label="NetSurf framebuffer pixels"></canvas>
-      <p class="note">Click the canvas to focus it. Pointer movement, mouse buttons, wheel events, and mapped keyboard keys are captured for the NetSurf framebuffer input bridge; current checked-in artifacts may report capture-only until rebuilt with the fbtk event-queue exports.</p>
+      <p class="note">Click the canvas to focus it. Pointer movement, mouse buttons, wheel events, and mapped keyboard keys are forwarded into the NetSurf framebuffer input queue.</p>
       <section class="panel">
         <h2>Framebuffer bridge</h2>
         <dl id="metadata" class="kv" aria-live="polite">
@@ -54,21 +55,22 @@
       const canvas = document.querySelector('#viewport');
       const status = document.querySelector('#status');
       const log = document.querySelector('#log');
-      const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
       const metadata = document.querySelector('#metadata');
+      const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
       let image = ctx.createImageData(canvas.width, canvas.height);
+      let framebufferVisible = false;
+      let dirtyRectCount = 0;
+
       const framebufferState = {
-        presenter: 'full-frame-poll',
-        surface: 'full NetSurf framebuffer frontend nsfb_t RAM surface',
+        presenter: 'libnsfb-dirty-rect',
+        surface: 'libnsfb emscripten nsfb_t surface',
         width: 0,
         height: 0,
         stride: 0,
         ptr: 0,
-        framesCopied: 0,
         moduleReady: false,
         wispBridgeAvailable: false,
         inputBridge: 'waiting for WASM',
-        inputEventsCaptured: 0,
         inputEventsForwarded: 0,
         dirtyRectsObserved: 0,
         lastDirtyRect: null,
@@ -79,10 +81,6 @@
         log.textContent += `${line}\n`;
         log.scrollTop = log.scrollHeight;
       };
-
-      function exported(module, name) {
-        return module[`_${name}`] || (() => module.ccall(name, 'number', [], []));
-      }
 
       function getBrowserPortWisp() {
         try {
@@ -100,121 +98,23 @@
           <dt>Surface</dt><dd>${framebufferState.surface}</dd>
           <dt>Geometry</dt><dd>${framebufferState.width || '?'} × ${framebufferState.height || '?'}; stride ${framebufferState.stride || '?'} bytes</dd>
           <dt>WASM pointer</dt><dd>${framebufferState.ptr ? `0x${framebufferState.ptr.toString(16)}` : 'waiting'}</dd>
-          <dt>Frames copied</dt><dd>${framebufferState.framesCopied}</dd>
-          <dt>Input bridge</dt><dd>${framebufferState.inputBridge}; captured ${framebufferState.inputEventsCaptured}, forwarded ${framebufferState.inputEventsForwarded}</dd>
+          <dt>Input bridge</dt><dd>${framebufferState.inputBridge}; forwarded ${framebufferState.inputEventsForwarded}</dd>
           <dt>Dirty rects</dt><dd>${framebufferState.dirtyRectsObserved}${framebufferState.lastDirtyRect ? `; last ${framebufferState.lastDirtyRect.join(',')}` : ''}</dd>
           <dt>Wisp bridge</dt><dd>${framebufferState.wispBridgeAvailable ? 'BrowserPortWisp available for future socket fetcher' : 'not connected on this standalone offline page'}</dd>
         `;
       }
 
-      function hasNativeExport(module, name) {
-        return typeof module[`_${name}`] === 'function';
-      }
-
-      function canvasPoint(event) {
-        const rect = canvas.getBoundingClientRect();
-        const x = Math.max(0, Math.min(canvas.width - 1, Math.floor((event.clientX - rect.left) * canvas.width / rect.width)));
-        const y = Math.max(0, Math.min(canvas.height - 1, Math.floor((event.clientY - rect.top) * canvas.height / rect.height)));
-        return { x, y };
-      }
-
-      function mapKeyToNsfbKey(event) {
-        const special = {
-          Backspace: 8,
-          Tab: 9,
-          Enter: 13,
-          Escape: 27,
-          ' ': 32,
-          Delete: 127,
-          ArrowUp: 273,
-          ArrowDown: 274,
-          ArrowRight: 275,
-          ArrowLeft: 276,
-          Insert: 277,
-          Home: 278,
-          End: 279,
-          PageUp: 280,
-          PageDown: 281,
-          Shift: event.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT ? 303 : 304,
-          Control: event.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT ? 305 : 306,
-          Alt: event.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT ? 307 : 308,
-          Meta: event.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT ? 309 : 310,
-        };
-        if (event.key in special) return special[event.key];
-        const fn = /^F(\d{1,2})$/.exec(event.key);
-        if (fn) {
-          const n = Number(fn[1]);
-          if (n >= 1 && n <= 12) return 281 + n;
-        }
-        if (event.key.length === 1) return event.key.codePointAt(0);
-        return 0;
-      }
-
-      function installInputBridge(module) {
-        const canForward = ['netsurf_framebuffer_input_key', 'netsurf_framebuffer_input_mouse_move', 'netsurf_framebuffer_input_mouse_button']
-          .every((name) => hasNativeExport(module, name));
-        framebufferState.inputBridge = canForward ? 'fbtk-event-queue' : 'js-canvas-capture-only';
-        document.body.dataset.netsurfFramebufferInput = framebufferState.inputBridge;
-
-        const forward = (name, args) => {
-          framebufferState.inputEventsCaptured += 1;
-          if (!canForward) return 0;
-          const result = module.ccall(name, 'number', args.map(() => 'number'), args);
-          if (result) framebufferState.inputEventsForwarded += 1;
-          return result;
-        };
-
-        canvas.addEventListener('pointerdown', (event) => {
-          canvas.focus();
-          canvas.setPointerCapture?.(event.pointerId);
-          const { x, y } = canvasPoint(event);
-          forward('netsurf_framebuffer_input_mouse_move', [x, y]);
-          forward('netsurf_framebuffer_input_mouse_button', [event.button + 1, 1]);
-          event.preventDefault();
-        });
-        canvas.addEventListener('pointerup', (event) => {
-          const { x, y } = canvasPoint(event);
-          forward('netsurf_framebuffer_input_mouse_move', [x, y]);
-          forward('netsurf_framebuffer_input_mouse_button', [event.button + 1, 0]);
-          event.preventDefault();
-        });
-        canvas.addEventListener('pointermove', (event) => {
-          const { x, y } = canvasPoint(event);
-          forward('netsurf_framebuffer_input_mouse_move', [x, y]);
-        });
-        canvas.addEventListener('wheel', (event) => {
-          const button = event.deltaY < 0 ? 4 : 5;
-          forward('netsurf_framebuffer_input_mouse_button', [button, 1]);
-          forward('netsurf_framebuffer_input_mouse_button', [button, 0]);
-          event.preventDefault();
-        }, { passive: false });
-        canvas.addEventListener('keydown', (event) => {
-          const key = mapKeyToNsfbKey(event);
-          if (!key) return;
-          forward('netsurf_framebuffer_input_key', [key, 1]);
-          event.preventDefault();
-        });
-        canvas.addEventListener('keyup', (event) => {
-          const key = mapKeyToNsfbKey(event);
-          if (!key) return;
-          forward('netsurf_framebuffer_input_key', [key, 0]);
-          event.preventDefault();
-        });
-      }
-
-      function copyFramebufferToCanvas(module) {
-        const ptr = exported(module, 'netsurf_framebuffer_ptr')();
-        const width = exported(module, 'netsurf_framebuffer_width')();
-        const height = exported(module, 'netsurf_framebuffer_height')();
-        const stride = exported(module, 'netsurf_framebuffer_stride')();
-        if (!ptr || !width || !height || !stride) return false;
+      function updateFramebufferRect(module, ptr, stride, width, height, x, y, w, h) {
+        if (!ptr || !width || !height || !stride || !w || !h) return false;
 
         framebufferState.ptr = ptr;
         framebufferState.width = width;
         framebufferState.height = height;
         framebufferState.stride = stride;
+        framebufferState.dirtyRectsObserved += 1;
+        framebufferState.lastDirtyRect = [x, y, x + w, y + h];
         document.body.dataset.netsurfFramebufferPresenter = framebufferState.presenter;
-        document.body.dataset.netsurfFramebufferSurface = 'frontend-nsfb-ram';
+        document.body.dataset.netsurfFramebufferSurface = 'libnsfb-emscripten';
         document.body.dataset.netsurfFramebufferWidth = String(width);
         document.body.dataset.netsurfFramebufferHeight = String(height);
         document.body.dataset.netsurfFramebufferStride = String(stride);
@@ -223,26 +123,123 @@
           canvas.width = width;
           canvas.height = height;
           image = ctx.createImageData(width, height);
+          x = 0;
+          y = 0;
+          w = width;
+          h = height;
         }
 
+        const x0 = Math.max(0, x | 0);
+        const y0 = Math.max(0, y | 0);
+        const x1 = Math.min(width, x0 + (w | 0));
+        const y1 = Math.min(height, y0 + (h | 0));
+        if (x1 <= x0 || y1 <= y0) return false;
+
         const heap = module.HEAPU8;
-        for (let y = 0; y < height; y += 1) {
-          const src = ptr + y * stride;
-          const dst = y * width * 4;
-          for (let x = 0; x < width; x += 1) {
-            const s = src + x * 4;
-            const d = dst + x * 4;
+        for (let row = y0; row < y1; row += 1) {
+          const src = ptr + row * stride + x0 * 4;
+          const dst = (row * width + x0) * 4;
+          for (let col = x0; col < x1; col += 1) {
+            const pixel = src + (col - x0) * 4;
+            const rgba = dst + (col - x0) * 4;
             // NetSurf's 32bpp framebuffer frontend requests XRGB8888. In wasm
             // little-endian memory that is B,G,R,X; Canvas wants R,G,B,A.
-            image.data[d] = heap[s + 2];
-            image.data[d + 1] = heap[s + 1];
-            image.data[d + 2] = heap[s];
-            image.data[d + 3] = 255;
+            image.data[rgba] = heap[pixel + 2];
+            image.data[rgba + 1] = heap[pixel + 1];
+            image.data[rgba + 2] = heap[pixel];
+            image.data[rgba + 3] = 255;
           }
         }
-        ctx.putImageData(image, 0, 0);
-        framebufferState.framesCopied += 1;
+
+        ctx.putImageData(image, 0, 0, x0, y0, x1 - x0, y1 - y0);
+        dirtyRectCount += 1;
+        canvas.dataset.dirtyRectCount = String(dirtyRectCount);
+        if (!framebufferVisible) {
+          framebufferVisible = true;
+          status.innerHTML = '<span class="ok">Visible:</span> NetSurf libnsfb dirty-rect updates are painting into Canvas ImageData.';
+          document.body.dataset.netsurfFramebufferVisible = 'true';
+        }
+        if (dirtyRectCount === 1 || dirtyRectCount % 20 === 0) renderMetadata();
         return true;
+      }
+
+      function canvasPosition(event) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: Math.max(0, Math.min(canvas.width - 1, Math.round((event.clientX - rect.left) * canvas.width / rect.width))),
+          y: Math.max(0, Math.min(canvas.height - 1, Math.round((event.clientY - rect.top) * canvas.height / rect.height))),
+        };
+      }
+
+      function keyCodeFromEvent(event) {
+        const named = {
+          Backspace: 8, Tab: 9, Enter: 13, Escape: 27, ' ': 32, Delete: 127,
+          ArrowUp: 273, ArrowDown: 274, ArrowRight: 275, ArrowLeft: 276,
+          Insert: 277, Home: 278, End: 279, PageUp: 280, PageDown: 281,
+          Shift: event.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT ? 303 : 304,
+          Control: event.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT ? 305 : 306,
+          Alt: event.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT ? 307 : 308,
+          Meta: event.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT ? 309 : 310,
+        };
+        if (named[event.key]) return named[event.key];
+        const fn = /^F(\d{1,2})$/.exec(event.key);
+        if (fn) {
+          const n = Number(fn[1]);
+          if (n >= 1 && n <= 12) return 281 + n;
+        }
+        if (event.key && event.key.length === 1) return event.key.charCodeAt(0);
+        return 0;
+      }
+
+      function installInputHandlers(module) {
+        const pushKey = module.cwrap('netsurf_framebuffer_push_key', 'number', ['number', 'number']);
+        const pushMouse = module.cwrap('netsurf_framebuffer_push_mouse', 'number', ['number', 'number']);
+        const pushMotion = module.cwrap('netsurf_framebuffer_push_motion', 'number', ['number', 'number']);
+        framebufferState.inputBridge = 'fbtk-event-queue';
+        document.body.dataset.netsurfFramebufferInput = framebufferState.inputBridge;
+        renderMetadata();
+
+        const forwarded = (result) => {
+          if (result) framebufferState.inputEventsForwarded += 1;
+          if (framebufferState.inputEventsForwarded < 6 || framebufferState.inputEventsForwarded % 20 === 0) renderMetadata();
+        };
+
+        canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+        canvas.addEventListener('mousemove', (event) => {
+          const { x, y } = canvasPosition(event);
+          forwarded(pushMotion(x, y));
+        });
+        canvas.addEventListener('mousedown', (event) => {
+          event.preventDefault();
+          canvas.focus();
+          const { x, y } = canvasPosition(event);
+          forwarded(pushMotion(x, y));
+          forwarded(pushMouse(1, event.button));
+        });
+        canvas.addEventListener('mouseup', (event) => {
+          event.preventDefault();
+          const { x, y } = canvasPosition(event);
+          forwarded(pushMotion(x, y));
+          forwarded(pushMouse(0, event.button));
+        });
+        canvas.addEventListener('wheel', (event) => {
+          event.preventDefault();
+          const wheelCode = event.deltaY < 0 ? 404 : 405;
+          forwarded(pushKey(1, wheelCode));
+          forwarded(pushKey(0, wheelCode));
+        }, { passive: false });
+        canvas.addEventListener('keydown', (event) => {
+          const code = keyCodeFromEvent(event);
+          if (!code) return;
+          event.preventDefault();
+          forwarded(pushKey(1, code));
+        });
+        canvas.addEventListener('keyup', (event) => {
+          const code = keyCodeFromEvent(event);
+          if (!code) return;
+          event.preventDefault();
+          forwarded(pushKey(0, code));
+        });
       }
 
       async function boot() {
@@ -250,20 +247,19 @@
           throw new Error('createNetSurfFrameBuffer was not defined by nsfb.js');
         }
 
-        const module = await createNetSurfFrameBuffer({
+        let module;
+        module = await createNetSurfFrameBuffer({
           locateFile: (path) => path,
           print: appendLog,
           printErr: (line) => appendLog(`[stderr] ${line}`),
           noExitRuntime: true,
+          netsurfOnFramebufferUpdate: (ptr, stride, width, height, x, y, w, h) => {
+            updateFramebufferRect(module, ptr, stride, width, height, x, y, w, h);
+          },
         });
 
         framebufferState.moduleReady = true;
-        module.onNetSurfFramebufferDirtyRect = (x0, y0, x1, y1, count) => {
-          framebufferState.dirtyRectsObserved = count;
-          framebufferState.lastDirtyRect = [x0, y0, x1, y1];
-        };
-        installInputBridge(module);
-        renderMetadata();
+        installInputHandlers(module);
 
         try {
           module.ccall('netsurf_framebuffer_main', 'number', [], []);
@@ -273,23 +269,11 @@
           if (String(error) !== 'unwind') throw error;
         }
 
-        let visible = false;
-        let ticks = 0;
-        const render = () => {
-          ticks += 1;
-          if (copyFramebufferToCanvas(module) && !visible) {
-            visible = true;
-            status.innerHTML = '<span class="ok">Visible:</span> copied live NetSurf framebuffer bytes into Canvas ImageData.';
-            document.body.dataset.netsurfFramebufferVisible = 'true';
-            renderMetadata();
-          } else if (visible && ticks % 30 === 0) {
-            renderMetadata();
-          } else if (!visible && ticks > 120) {
-            status.innerHTML = '<span class="warn">Waiting:</span> NetSurf module loaded, but no framebuffer pointer is exported yet.';
+        window.setTimeout(() => {
+          if (!framebufferVisible) {
+            status.innerHTML = '<span class="warn">Waiting:</span> NetSurf module loaded, but no libnsfb dirty-rect update has arrived yet.';
           }
-          requestAnimationFrame(render);
-        };
-        render();
+        }, 3000);
       }
 
       window.addEventListener('error', (event) => {

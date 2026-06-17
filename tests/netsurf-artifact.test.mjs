@@ -24,19 +24,21 @@ test('NetSurf wasm artifacts have valid wasm magic headers', async () => {
   }
 });
 
-test('NetSurf public page exposes the full framebuffer bridge', async () => {
+test('NetSurf public page exposes the dirty-rect framebuffer/input bridge', async () => {
   const page = await readFile('public/browsers/netsurf/index.html', 'utf8');
-  assert.match(page, /live\s+NetSurf\s+framebuffer/i);
+  assert.match(page, /libnsfb\s+dirty-rect/i);
   assert.match(page, /full NetSurf\s+framebuffer frontend/i);
   assert.match(page, /canvas/i);
   assert.match(page, /nsfb\.js/);
   assert.match(page, /createNetSurfFrameBuffer/);
   assert.match(page, /netsurfFramebufferState/);
   assert.match(page, /BrowserPortWisp/);
-  assert.match(page, /full-frame-poll/);
-  assert.match(page, /netsurf_framebuffer_input_key/);
-  assert.match(page, /netsurfFramebufferInput/);
-  assert.match(page, /js-canvas-capture-only|fbtk-event-queue/);
+  assert.match(page, /libnsfb-dirty-rect/);
+  assert.match(page, /fbtk-event-queue/);
+  assert.match(page, /netsurfOnFramebufferUpdate/);
+  assert.match(page, /netsurf_framebuffer_push_key/);
+  assert.match(page, /netsurf_framebuffer_push_mouse/);
+  assert.doesNotMatch(page, /requestAnimationFrame\(render\)/);
   assert.doesNotMatch(page, /nsfb-canvas-probe\.js/);
   assert.doesNotMatch(page, /wss:\/\/anura\.pro/i, 'public NetSurf page should not hard-code the shared Wisp endpoint');
 });

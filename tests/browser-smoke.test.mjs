@@ -143,16 +143,12 @@ test('root page renders registry launch links and work queue', { timeout: 15_000
   }
 });
 
-test('NetSurf public page paints live full-framebuffer pixels', { timeout: 20_000 }, async () => {
+test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', { timeout: 20_000 }, async () => {
   const page = await newAppPage();
   try {
     await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
     await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
     await page.locator('#viewport').waitFor({ state: 'visible' });
-
-    const canvasLocator = page.locator('#viewport');
-    await canvasLocator.click({ position: { x: 32, y: 32 } });
-    await page.keyboard.press('a');
 
     const result = await page.evaluate(() => {
       const canvas = document.querySelector('#viewport');
@@ -166,12 +162,17 @@ test('NetSurf public page paints live full-framebuffer pixels', { timeout: 20_00
         if (data[i] < 245 || data[i + 1] < 245 || data[i + 2] < 245) nonWhite += 1;
         if (data[i] > 8 || data[i + 1] > 8 || data[i + 2] > 8) nonBlack += 1;
       }
+      const pixelAt = (x, y) => Array.from(ctx.getImageData(x, y, 1, 1).data);
       return {
         width: canvas.width,
         height: canvas.height,
         opaque,
         nonWhite,
         nonBlack,
+        topChrome: pixelAt(5, 5),
+        toolbarIcon: pixelAt(40, 20),
+        urlChrome: pixelAt(120, 20),
+        blankPage: pixelAt(320, 240),
         status: document.querySelector('#status')?.textContent ?? '',
         presenter: document.body.dataset.netsurfFramebufferPresenter,
         surface: document.body.dataset.netsurfFramebufferSurface,
@@ -180,27 +181,36 @@ test('NetSurf public page paints live full-framebuffer pixels', { timeout: 20_00
         metadata: document.querySelector('#metadata')?.textContent ?? '',
         inputDataset: document.body.dataset.netsurfFramebufferInput,
         canvasTabIndex: canvas.tabIndex,
+        dirtyRectCount: Number(canvas.dataset.dirtyRectCount || 0),
       };
     });
 
     assert.equal(result.width, 640);
     assert.equal(result.height, 480);
-    assert.match(result.status, /live NetSurf framebuffer/i);
-    assert.equal(result.presenter, 'full-frame-poll');
-    assert.equal(result.surface, 'frontend-nsfb-ram');
+    assert.match(result.status, /dirty-rect updates/i);
+    assert.equal(result.presenter, 'libnsfb-dirty-rect');
+    assert.equal(result.surface, 'libnsfb-emscripten');
     assert.equal(result.stride, 2560);
-    assert.equal(result.state.presenter, 'full-frame-poll');
-    assert.equal(result.state.surface, 'full NetSurf framebuffer frontend nsfb_t RAM surface');
-    assert.match(result.inputDataset, /^(js-canvas-capture-only|fbtk-event-queue)$/);
+    assert.equal(result.state.presenter, 'libnsfb-dirty-rect');
+    assert.equal(result.state.surface, 'libnsfb emscripten nsfb_t surface');
+    assert.equal(result.inputDataset, 'fbtk-event-queue');
     assert.equal(result.canvasTabIndex, 0);
-    assert.ok(result.state.inputEventsCaptured >= 2, `expected canvas input events to be captured, got ${JSON.stringify(result)}`);
-    assert.ok(result.state.inputEventsForwarded >= 0, `expected input forwarding counter, got ${JSON.stringify(result)}`);
     assert.ok(result.state.ptr > 0, `expected exported nsfb_t buffer pointer, got ${JSON.stringify(result)}`);
-    assert.ok(result.state.framesCopied >= 1, `expected copied frames, got ${JSON.stringify(result)}`);
+    assert.ok(result.dirtyRectCount > 0, `expected at least one NetSurf dirty rect, got ${JSON.stringify(result)}`);
+    assert.ok(result.state.dirtyRectsObserved > 0, `expected dirty rect state, got ${JSON.stringify(result)}`);
     assert.match(result.metadata, /BrowserPortWisp|standalone offline page/i);
     assert.ok(result.opaque > 250_000, `expected opaque NetSurf framebuffer, got ${JSON.stringify(result)}`);
     assert.ok(result.nonWhite > 1_000, `expected browser chrome/content contrast, got ${JSON.stringify(result)}`);
     assert.ok(result.nonBlack > 1_000, `expected non-empty NetSurf pixels, got ${JSON.stringify(result)}`);
+    assert.deepEqual(result.topChrome, [221, 221, 221, 255], `expected deterministic NetSurf top chrome pixel, got ${JSON.stringify(result)}`);
+    assert.deepEqual(result.toolbarIcon, [42, 42, 42, 255], `expected deterministic NetSurf toolbar icon pixel, got ${JSON.stringify(result)}`);
+    assert.deepEqual(result.urlChrome, [76, 76, 204, 255], `expected deterministic NetSurf URL bar chrome pixel, got ${JSON.stringify(result)}`);
+    assert.deepEqual(result.blankPage, [255, 255, 255, 255], `expected deterministic about:blank content pixel, got ${JSON.stringify(result)}`);
+
+    const canvasLocator = page.locator('#viewport');
+    await canvasLocator.click({ position: { x: 320, y: 240 } });
+    await page.keyboard.press('a');
+    await page.waitForFunction(() => window.netsurfFramebufferState?.inputEventsForwarded >= 3);
   } finally {
     await closePage(page);
   }
