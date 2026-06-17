@@ -107,13 +107,14 @@ async function hoverNetSurfCanvasPixel(canvasLocator, x, y) {
   await canvasLocator.hover({ position: await netSurfCanvasCssPosition(canvasLocator, x, y) });
 }
 
-async function readNetSurfStatusBarMetrics(page) {
-  return page.evaluate(() => {
+async function readNetSurfRegionMetrics(page, region) {
+  return page.evaluate(({ x, y, width, height }) => {
     const canvas = document.querySelector('#viewport');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const { data } = ctx.getImageData(0, 462, 200, 18);
+    const { data } = ctx.getImageData(x, y, width, height);
     let black = 0;
     let nonGrey = 0;
+    let nonWhite = 0;
     let hash = 0;
     for (let i = 0; i < data.length; i += 4) {
       const red = data[i];
@@ -121,10 +122,19 @@ async function readNetSurfStatusBarMetrics(page) {
       const blue = data[i + 2];
       if (red < 16 && green < 16 && blue < 16) black += 1;
       if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+      if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
       hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
     }
-    return { black, nonGrey, hash };
-  });
+    return { black, nonGrey, nonWhite, hash };
+  }, region);
+}
+
+async function readNetSurfStatusBarMetrics(page) {
+  return readNetSurfRegionMetrics(page, { x: 0, y: 462, width: 200, height: 18 });
+}
+
+async function readNetSurfAddressBarMetrics(page) {
+  return readNetSurfRegionMetrics(page, { x: 95, y: 3, width: 520, height: 28 });
 }
 
 before(async () => {
@@ -323,8 +333,52 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       `expected address-bar hover to visibly change NetSurf status-bar pixels, got before ${JSON.stringify(beforeAddressStatus)} after ${JSON.stringify(addressHover)}`,
     );
 
+    const beforeAddressFocus = await readNetSurfAddressBarMetrics(page);
     const beforeAddressKeyCount = addressHover.inputEventsForwarded;
     await clickNetSurfCanvasPixel(canvasLocator, 180, 16);
+    const addressFocus = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const { data } = ctx.getImageData(95, 3, 520, 28);
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const cursor = state?.cursor;
+        const textCursorActive = cursor?.hotspot?.[0] === 3 && cursor?.hotspot?.[1] === 8;
+        const clickForwarded = state?.inputEventsForwarded >= before.inputCount + 3 && state?.lastInputEvent?.type === 'pointerup-button';
+        const urlBarRedrawn = hash !== before.metrics.hash && black >= before.metrics.black + 10;
+        if (!textCursorActive || !clickForwarded || !urlBarRedrawn) return null;
+        return {
+          before: before.metrics,
+          after: { black, nonGrey, nonWhite, hash },
+          cursor,
+          inputEventsForwarded: state.inputEventsForwarded,
+          lastInputEvent: state.lastInputEvent,
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+        };
+      },
+      { metrics: beforeAddressFocus, inputCount: beforeAddressKeyCount },
+    ).then((handle) => handle.jsonValue());
+    assert.equal(addressFocus.dataset, 'pointerup-button');
+    assert.deepEqual(addressFocus.lastInputEvent.detail, { button: 0 });
+    assert.deepEqual(addressFocus.cursor.hotspot, [3, 8], `expected address-bar focus to keep the text cursor active, got ${JSON.stringify(addressFocus)}`);
+    assert.ok(
+      addressFocus.after.black >= addressFocus.before.black + 10 && addressFocus.after.hash !== addressFocus.before.hash,
+      `expected clicking the address bar to visibly redraw the NetSurf URL field/caret pixels, got ${JSON.stringify(addressFocus)}`,
+    );
+
     await page.keyboard.press('x');
     const addressKeyForwarding = await page.waitForFunction(
       ({ beforeCount, beforeStatus }) => {
