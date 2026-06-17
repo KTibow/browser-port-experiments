@@ -51,6 +51,16 @@ modifying workflows), and we cannot edit the Pages config via API either. So:
   on the `@smoke` tests. A second optional `docs/verify-workflow.example.yaml`
   runs the full functional suite on a schedule.
 
+**The workflows are now installed** (owner copied them; `.github/workflows/`
+contains `deploy-pages-workflow.yaml` + `verify-workflow.yaml`). BUT pushes made by
+the agent token do **not** auto-trigger them (GitHub suppresses workflow runs from
+`GITHUB_TOKEN`). **After you push, publish your changes with:**
+```bash
+gh workflow run "Deploy Pages" --ref main
+```
+Verify it at https://kendell.dev/browser-port-experiments/ . If you change the
+workflow `.example.yaml` files in `docs/`, the owner must re-copy them.
+
 ## Verification status
 
 Run `npm test`. Statuses also live in `browsers.json` (`tested` field) and drive

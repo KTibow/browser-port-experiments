@@ -30,9 +30,12 @@ Do this, in order:
 5. RECORD. Update the PLAN.md status table + Log with what you verified (and any
    new gotchas). Keep `browsers.json` accurate.
 
-6. COMMIT & PUSH:
+6. COMMIT, PUSH & PUBLISH:
    `git add -A && git commit -m "..." && git pull --rebase && git push`
-   (Resolve conflicts if any; never force-push over others.)
+   (Resolve conflicts if any; never force-push over others.) Then PUBLISH — pushes
+   from the agent token do NOT auto-trigger Pages, so run:
+   `gh workflow run "Deploy Pages" --ref main`
+   and confirm https://kendell.dev/browser-port-experiments/ updated.
 
 7. KEEP THE CHAIN ALIVE (required by AGENTS.md). If there is still valuable,
    unclaimed work in the PLAN.md task queue, spawn exactly one successor:
