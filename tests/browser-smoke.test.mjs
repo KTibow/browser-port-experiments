@@ -213,7 +213,9 @@ async function waitForNetSurfToolbarNavigationMetrics(page, expected, beforeDirt
       const regions = {
         toolbar: { x: 0, y: 0, width: 95, height: 36 },
         address: { x: 95, y: 3, width: 520, height: 28 },
+        status: { x: 0, y: 462, width: 620, height: 18 },
         content: { x: 0, y: 36, width: 640, height: 426 },
+        logo: { x: 15, y: 118, width: 570, height: 45 },
       };
       const metrics = Object.fromEntries(
         Object.entries(regions).map(([name, region]) => [name, metricsFor(region)]),
@@ -577,7 +579,9 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       {
         toolbar: { black: 46, nonGrey: 3420, nonWhite: 3420, hash: 2020031204 },
         address: { black: 0, nonGrey: 14560, nonWhite: 14560, hash: 1016345560 },
+        status: { black: 0, nonGrey: 3860, nonWhite: 11160, hash: 1827365023 },
         content: { black: 596, nonGrey: 267611, nonWhite: 266865, hash: 651458069 },
+        logo: { black: 175, nonGrey: 25650, nonWhite: 25650, hash: 1841983218 },
       },
       beforeToolbarBackDirtyRects,
     );
@@ -589,9 +593,11 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       {
         toolbar: { black: 46, nonGrey: 3420, nonWhite: 3420, hash: 2020031204 },
         address: { black: 0, nonGrey: 14560, nonWhite: 14560, hash: 1016345560 },
+        status: { black: 0, nonGrey: 3860, nonWhite: 11160, hash: 1827365023 },
         content: { black: 596, nonGrey: 267611, nonWhite: 266865, hash: 651458069 },
+        logo: { black: 175, nonGrey: 25650, nonWhite: 25650, hash: 1841983218 },
       },
-      `expected NetSurf toolbar Back action to visibly navigate away from about:welcome chrome/content, got ${JSON.stringify(toolbarBackNavigation)}`,
+      `expected NetSurf toolbar Back action to visibly navigate away from about:welcome chrome/status/content/logo rasters, got ${JSON.stringify(toolbarBackNavigation)}`,
     );
 
     await clickNetSurfCanvasPixel(canvasLocator, 45, 15);
@@ -612,6 +618,20 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.ok(
       (await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved)) > toolbarBackNavigation.dirtyRectsObserved,
       `expected toolbar forward restore to preserve dirty-rect advancement, got ${JSON.stringify(toolbarBackNavigation)}`,
+    );
+    const toolbarForwardRestoredRasterMetrics = {
+      status: await readNetSurfRegionMetrics(page, { x: 0, y: 462, width: 620, height: 18 }),
+      content: await readNetSurfRegionMetrics(page, { x: 0, y: 36, width: 640, height: 426 }),
+      logo: await readNetSurfRegionMetrics(page, { x: 15, y: 118, width: 570, height: 45 }),
+    };
+    assert.deepEqual(
+      toolbarForwardRestoredRasterMetrics,
+      {
+        status: { black: 404, nonGrey: 1708, nonWhite: 11160, hash: 3968113013 },
+        content: { black: 1808, nonGrey: 268532, nonWhite: 135133, hash: 4161839195 },
+        logo: { black: 0, nonGrey: 25650, nonWhite: 24510, hash: 1950299052 },
+      },
+      `expected toolbar Forward to restore deterministic about:welcome status/content/logo rasters, got ${JSON.stringify(toolbarForwardRestoredRasterMetrics)}`,
     );
 
     const stableAboutWelcomeChromeMetrics = {
