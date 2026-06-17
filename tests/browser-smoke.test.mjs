@@ -2123,6 +2123,58 @@ test('NetSurf about:welcome lower link activation preserves offline content with
     const canvasLocator = page.locator('#viewport');
     const searchFormRevealed = await revealNetSurfWelcomeSearchForm(page, canvasLocator);
 
+    await hoverNetSurfCanvasPixel(canvasLocator, 450, 330);
+    const lowerRightLinkHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 896, nonGrey: 2200, nonWhite: 11160, hash: 2709257251 },
+        },
+        targetBand: {
+          region: { x: 380, y: 310, width: 200, height: 65 },
+          metrics: { black: 64, nonGrey: 13000, nonWhite: 922, hash: 658901800 },
+        },
+      },
+      searchFormRevealed.dirtyRectsObserved,
+    );
+    assert.equal(lowerRightLinkHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(lowerRightLinkHover.cursor.hotspot, [4, 0], `expected lower-right about:welcome link hover to expose NetSurf's hand cursor, got ${JSON.stringify(lowerRightLinkHover)}`);
+    assert.deepEqual(
+      lowerRightLinkHover.metrics.status,
+      { black: 896, nonGrey: 2200, nonWhite: 11160, hash: 2709257251 },
+      `expected lower-right about:welcome link hover to rasterize a distinct status-bar URL, got ${JSON.stringify(lowerRightLinkHover)}`,
+    );
+    assert.deepEqual(
+      lowerRightLinkHover.metrics.targetBand,
+      { black: 64, nonGrey: 13000, nonWhite: 922, hash: 658901800 },
+      `expected lower-right about:welcome link hover to preserve its visible link text band, got ${JSON.stringify(lowerRightLinkHover)}`,
+    );
+
+    await hoverNetSurfCanvasPixel(canvasLocator, 240, 350);
+    const lowerBottomLinkHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 980, nonGrey: 2284, nonWhite: 11160, hash: 618852567 },
+        },
+        linkStripe: {
+          region: { x: 20, y: 250, width: 590, height: 130 },
+          metrics: { black: 448, nonGrey: 76700, nonWhite: 15625, hash: 1376735688 },
+        },
+      },
+      lowerRightLinkHover.dirtyRectsObserved,
+    );
+    assert.equal(lowerBottomLinkHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(lowerBottomLinkHover.cursor.hotspot, [4, 0], `expected lower-bottom about:welcome link hover to expose NetSurf's hand cursor, got ${JSON.stringify(lowerBottomLinkHover)}`);
+    assert.notEqual(lowerBottomLinkHover.metrics.status.hash, lowerRightLinkHover.metrics.status.hash, `expected adjacent lower about:welcome links to expose distinct status-bar targets, got ${JSON.stringify({ lowerRightLinkHover, lowerBottomLinkHover })}`);
+    assert.deepEqual(
+      lowerBottomLinkHover.metrics.status,
+      { black: 980, nonGrey: 2284, nonWhite: 11160, hash: 618852567 },
+      `expected lower-bottom about:welcome link hover to rasterize another distinct status-bar URL, got ${JSON.stringify(lowerBottomLinkHover)}`,
+    );
+
     await hoverNetSurfCanvasPixel(canvasLocator, 240, 310);
     const lowerLinkHover = await waitForNetSurfRegionMetrics(
       page,
@@ -2132,7 +2184,7 @@ test('NetSurf about:welcome lower link activation preserves offline content with
           metrics: { black: 711, nonGrey: 2015, nonWhite: 11160, hash: 3767898530 },
         },
       },
-      searchFormRevealed.dirtyRectsObserved,
+      lowerBottomLinkHover.dirtyRectsObserved,
     );
     assert.equal(lowerLinkHover.lastInputEvent.type, 'pointermove');
     assert.deepEqual(lowerLinkHover.cursor.hotspot, [4, 0], `expected alternate scroll-revealed about:welcome link hover to expose NetSurf's hand cursor, got ${JSON.stringify(lowerLinkHover)}`);
