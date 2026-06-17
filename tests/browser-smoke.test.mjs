@@ -182,6 +182,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
         inputDataset: document.body.dataset.netsurfFramebufferInput,
         canvasTabIndex: canvas.tabIndex,
         dirtyRectCount: Number(canvas.dataset.dirtyRectCount || 0),
+        dirtyRectCallbacks: Number(canvas.dataset.dirtyRectCallbacks || 0),
       };
     });
 
@@ -198,6 +199,8 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.ok(result.state.ptr > 0, `expected exported nsfb_t buffer pointer, got ${JSON.stringify(result)}`);
     assert.ok(result.dirtyRectCount > 0, `expected at least one NetSurf dirty rect, got ${JSON.stringify(result)}`);
     assert.ok(result.state.dirtyRectsObserved > 0, `expected dirty rect state, got ${JSON.stringify(result)}`);
+    assert.ok(result.state.dirtyRectCallbacksObserved >= result.state.dirtyRectsObserved, `expected dirty rect callback accounting, got ${JSON.stringify(result)}`);
+    assert.ok(result.dirtyRectCallbacks >= result.dirtyRectCount, `expected canvas dirty rect callback accounting, got ${JSON.stringify(result)}`);
     assert.match(result.metadata, /BrowserPortWisp|standalone offline page/i);
     assert.ok(result.opaque > 250_000, `expected opaque NetSurf framebuffer, got ${JSON.stringify(result)}`);
     assert.ok(result.nonWhite > 1_000, `expected browser chrome/content contrast, got ${JSON.stringify(result)}`);
@@ -208,9 +211,28 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.deepEqual(result.blankPage, [255, 255, 255, 255], `expected deterministic about:blank content pixel, got ${JSON.stringify(result)}`);
 
     const canvasLocator = page.locator('#viewport');
+    const beforeInputCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsForwarded);
     await canvasLocator.click({ position: { x: 320, y: 240 } });
+    await page.mouse.wheel(0, 120);
     await page.keyboard.press('a');
-    await page.waitForFunction(() => window.netsurfFramebufferState?.inputEventsForwarded >= 3);
+    const interaction = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.inputEventsForwarded < before + 8) return null;
+        return {
+          before,
+          after: state.inputEventsForwarded,
+          lastInputEvent: state.lastInputEvent,
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+        };
+      },
+      beforeInputCount,
+    ).then((handle) => handle.jsonValue());
+    assert.ok(interaction.after >= beforeInputCount + 8, `expected deterministic forwarded click/wheel/key events, got ${JSON.stringify(interaction)}`);
+    assert.equal(interaction.lastInputEvent.type, 'keyup');
+    assert.equal(interaction.lastInputEvent.detail.key, 'a');
+    assert.equal(interaction.lastInputEvent.detail.nsfb, 97);
+    assert.equal(interaction.dataset, 'keyup');
   } finally {
     await closePage(page);
   }

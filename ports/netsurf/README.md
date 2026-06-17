@@ -17,15 +17,15 @@ What it proves:
 - NetSurf's build tools and core libraries can be cross-built to `wasm32-unknown-emscripten` with Ubuntu/Debian Emscripten 3.1.6.
 - The framebuffer target can compile and link as a JS/WASM artifact using a local `emscripten` libnsfb surface patched into the build.
 - The full `nsfb.js` artifact is modularized as `createNetSurfFrameBuffer`, starts from the public page, enters an Emscripten browser main loop, and exports its live framebuffer pointer/width/height/stride plus input queue shims.
-- The public page copies NetSurf framebuffer frontend pixels (currently `-f emscripten -w 640 -h 480 about:blank`) into Canvas `ImageData` from libnsfb surface `update` dirty rectangles and stamps canvas/body dirty-rect metadata for smoke tests.
-- Canvas mouse movement/buttons, wheel, and basic keyboard events are queued into libnsfb events for the framebuffer frontend/fbtk path.
+- The public page copies NetSurf framebuffer frontend pixels (currently `-f emscripten -w 640 -h 480 about:blank`) into Canvas `ImageData` from libnsfb surface `update` dirty rectangles, coalesces callback bursts to one `requestAnimationFrame` paint, and stamps canvas/body dirty-rect metadata for smoke tests.
+- Canvas pointer movement/buttons, wheel, and a broader SDL/libnsfb-style keyboard subset (navigation, modifiers, function keys, numpad fallbacks, printable Latin-1) are queued into libnsfb events for the framebuffer frontend/fbtk path.
 - The checked-in artifacts are intentionally offline: curl/networking, OpenSSL, JavaScript/Duktape, PNG/JPEG/WebP/JPEGXL, SVG, and freetype are disabled.
 
 What it does **not** prove yet:
 
 - No Wisp networking yet. HTTP(S) is disabled to avoid libcurl/OpenSSL while the framebuffer path is being established. The public page only documents the future `BrowserPortWisp` handoff and deliberately does not hard-code a Wisp endpoint into HTML or C/WASM.
-- Input is now wired at the libnsfb event level, but only basic mouse buttons/motion/wheel and common keyboard keys are mapped; text composition/IME and exhaustive keycode coverage are not done.
-- The page no longer polls/copies the full framebuffer each animation frame; it depends on the dedicated Emscripten libnsfb surface `update` callback. Cursor-specific libnsfb hooks are still minimal.
+- Input is now wired at the libnsfb event level with deterministic Playwright coverage for click, wheel, and key forwarding; text composition/IME and exhaustive keycode coverage are not done.
+- The page no longer polls/copies the full framebuffer each animation frame; it depends on the dedicated Emscripten libnsfb surface `update` callback. The source patch now includes cursor callbacks and C-side dirty-rect coalescing for the next artifact rebuild; the checked-in page also coalesces dirty callbacks before canvas painting.
 
 ## Toolchain path
 
@@ -85,7 +85,7 @@ The current relay script:
 2. Sources NetSurf `docs/env.sh`, clones the NetSurf dependency set, disables libdom XML bindings, and builds static wasm libraries.
 3. Writes `netsurf/Makefile.config` with networking and heavyweight image/JS dependencies disabled, `NETSURF_USE_LIBICONV_PLUG := YES`, and modular Emscripten linker flags.
 4. Patches `content/fetchers/curl.h` so curl-disabled builds do not need `<curl/curl.h>`.
-5. Patches libnsfb to add `NSFB_SURFACE_EMSCRIPTEN`, `src/surface/emscripten.c`, and surface makefile wiring. The surface owns RAM-like framebuffer storage, calls a JS `Module.netsurfOnFramebufferUpdate(...)` hook from its `update` callback, and exposes `netsurf_framebuffer_push_key/mouse/motion` event queue shims.
+5. Patches libnsfb to add `NSFB_SURFACE_EMSCRIPTEN`, `src/surface/emscripten.c`, and surface makefile wiring. The C surface source lives in `ports/netsurf/patches/libnsfb-emscripten-surface.c`; it owns RAM-like framebuffer storage, coalesces dirty rectangles before calling JS `Module.netsurfOnFramebufferUpdate(...)`, emits `Module.netsurfOnCursorUpdate(...)`, and exposes `netsurf_framebuffer_push_key/mouse/motion` event queue shims.
 6. Patches `frontends/framebuffer/framebuffer.c` to export `netsurf_framebuffer_ptr/width/height/stride` for geometry/debugging and dirty-rect copy source pointers.
 7. Patches `frontends/framebuffer/gui.c` to run `framebuffer_run_iteration` from `emscripten_set_main_loop` and export `netsurf_framebuffer_main` with the current fixed offline arguments.
 8. Links the full framebuffer frontend with normal pkg-config libraries intact. Do **not** pass `LDFLAGS=...` on the make command line; that overrides NetSurf's accumulated `-lnsfb`, `-lcss`, `-ldom`, etc. The script appends Emscripten flags in `Makefile.config` instead.
@@ -99,7 +99,7 @@ The current relay script:
 5. **zlib:** `utils/hashtable.c` includes `zlib.h`; provide Emscripten zlib or a source-built wasm zlib.
 6. **NetSurf env.sh strict-mode fragility:** current NetSurf `docs/env.sh` references unset variables and probes optional compiler paths; `build-framebuffer-wasm.sh` relaxes `-e/-u` while sourcing it and leaves `nounset` off for the shell functions it defines.
 7. **Native PNG tool dependency:** NetSurf's build-time `convert_image` tool includes `<png.h>` even when target PNG decoding is disabled, so Ubuntu builds need `libpng-dev` for the native helper.
-8. **Canvas/frontend:** the custom libnsfb `emscripten` surface is patched into libnsfb during the build. It extends libnsfb's fixed surface enum, mirrors `ram.c` allocation, but presents only `nsfb_update` dirty rectangles to JS. Remaining polish: implement cursor-specific surface hooks and coalesce dirty rectangles if callback volume becomes high. The SDL1/Emscripten route remains worth validating later, but the dedicated surface is now the active checked-in path.
+8. **Canvas/frontend:** the custom libnsfb `emscripten` surface is patched into libnsfb during the build from `ports/netsurf/patches/libnsfb-emscripten-surface.c`. It extends libnsfb's fixed surface enum, mirrors `ram.c` allocation, coalesces `nsfb_update` dirty rectangles for JS, and has a cursor callback hook. The checked-in HTML also batches dirty callbacks to a single canvas paint per animation frame. The SDL1/Emscripten route remains worth validating later, but the dedicated surface is now the active checked-in path.
 9. **libnsfb surface registration in static archives:** `NSFB_SURFACE_DEF(emscripten, ...)` relies on a constructor in `emscripten.o`; the framebuffer frontend Makefile links libnsfb with `-Wl,--whole-archive` so that constructor is retained.
 
 ## Verification performed
@@ -110,7 +110,7 @@ ports/netsurf/scripts/verify-artifact.sh
 npm test
 ```
 
-The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that at least one dirty rectangle was presented, and samples deterministic NetSurf chrome/about:blank pixels.
+The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, samples deterministic NetSurf chrome/about:blank pixels, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
 
 ## Suggested next steps
 

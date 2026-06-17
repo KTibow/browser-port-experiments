@@ -24,6 +24,16 @@ test('NetSurf wasm artifacts have valid wasm magic headers', async () => {
   }
 });
 
+test('NetSurf libnsfb Emscripten source patch is externalized and documents surface hooks', async () => {
+  const script = await readFile('ports/netsurf/scripts/build-framebuffer-wasm.sh', 'utf8');
+  const source = await readFile('ports/netsurf/patches/libnsfb-emscripten-surface.c', 'utf8');
+  assert.match(script, /libnsfb-emscripten-surface\.c/);
+  assert.match(source, /netsurf_emscripten_surface_cursor_js/);
+  assert.match(source, /emscripten_async_call\(flush_pending_update/);
+  assert.match(source, /netsurf_framebuffer_push_motion/);
+  assert.doesNotMatch(script, /surface\.write_text\(r'''/);
+});
+
 test('NetSurf public page exposes the dirty-rect framebuffer/input bridge', async () => {
   const page = await readFile('public/browsers/netsurf/index.html', 'utf8');
   assert.match(page, /libnsfb\s+dirty-rect/i);
