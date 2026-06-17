@@ -9,6 +9,7 @@
       "engine": "WebView",
       "era": "2004 - present",
       "blurb": "Tiny assembly-written OS that boots from a single 1.44 MB floppy in seconds. Ships a real graphical web browser (WebView) with TCP/IP networking.",
+      "hint": "Open WEBVIEW (or NETSURF) from the desktop to start browsing.",
       "highlight": true,
       "tested": "boots",
       "config": {
@@ -22,9 +23,10 @@
       "name": "Windows 2000",
       "engine": "Internet Explorer 5 (Trident / MSHTML)",
       "era": "2000",
-      "blurb": "Microsoft Windows 2000 Professional resumed from a saved state, with the real Internet Explorer 5 / Trident engine. Networked through Wisp.",
+      "blurb": "Microsoft Windows 2000 Professional resumed from a saved state, with the real Internet Explorer 5 / Trident engine. Also bundles K-Meleon (Gecko), Lynx and Retrozilla. Networked through Wisp.",
+      "hint": "First double-click 'networking.bat' on the desktop, then open Internet Explorer (or K-Meleon / Lynx / Retrozilla).",
       "highlight": true,
-      "tested": "pending",
+      "tested": "boots",
       "config": {
         "memory_size": 536870912,
         "hda": { "url": "windows2k-v2/.img", "size": 2147483648, "async": true, "fixed_chunk_size": 262144, "use_parts": true },
@@ -39,6 +41,7 @@
       "engine": "Internet Explorer (Trident / MSHTML)",
       "era": "1998",
       "blurb": "Windows 98 resumed from a saved state with Internet Explorer. A widely-used browser of its era running entirely in your tab.",
+      "hint": "First double-click 'networking.bat' on the desktop, then open Internet Explorer.",
       "highlight": false,
       "tested": "boots",
       "config": {
@@ -55,6 +58,7 @@
       "engine": "Internet Explorer (Trident / MSHTML)",
       "era": "2000",
       "blurb": "Windows Millennium Edition resumed from a saved state, with Internet Explorer.",
+      "hint": "Enable networking (look for 'networking.bat' on the desktop), then open Internet Explorer.",
       "highlight": false,
       "tested": "pending",
       "config": {
@@ -69,9 +73,10 @@
       "name": "Haiku",
       "engine": "WebPositive (WebKit)",
       "era": "2009 - present",
-      "blurb": "Haiku is a modern reimagining of BeOS. Its native browser, WebPositive, is built on WebKit, so it renders the modern web. Resumed from a saved state.",
+      "blurb": "Haiku is a modern reimagining of BeOS. Its native browser, WebPositive, is built on WebKit, so it renders the modern web. Also includes the Links browser. Resumed from a saved state.",
+      "hint": "In the Terminal, run 'networking.sh' to enable networking, then open WebPositive.",
       "highlight": true,
-      "tested": "pending",
+      "tested": "boots",
       "config": {
         "memory_size": 536870912,
         "hda": { "url": "haiku-v5/.img", "size": 1342177280, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
@@ -86,6 +91,7 @@
       "engine": "Internet Explorer-compatible shell",
       "era": "1998 - present",
       "blurb": "ReactOS is an open-source OS binary-compatible with Windows. Boots from a saved state to a familiar desktop. Networked through Wisp.",
+      "hint": "Open a web browser from the Start menu; enable networking if prompted.",
       "highlight": false,
       "tested": "pending",
       "config": {
@@ -103,6 +109,7 @@
       "engine": "Ladybird (LibWeb)",
       "era": "2018 - present",
       "blurb": "SerenityOS ships Ladybird, a from-scratch independent browser engine (LibWeb/LibJS). Resumed from a saved state.",
+      "hint": "Open Ladybird (or Browser) from the taskbar.",
       "highlight": true,
       "tested": "pending",
       "config": {
@@ -119,6 +126,7 @@
       "engine": "Dillo + Mozilla Firefox",
       "era": "2003",
       "blurb": "A 50 MB Linux live CD that bundles the Dillo and Firefox browsers. Boots into X11 from CD-ROM.",
+      "hint": "Launch Dillo or Firefox from the desktop / menu once X11 is up.",
       "highlight": false,
       "tested": "pending",
       "config": {

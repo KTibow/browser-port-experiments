@@ -49,6 +49,14 @@ async function main() {
   titleEl.textContent = entry.name;
   engineEl.textContent = entry.engine;
 
+  if (entry.hint) {
+    const hintEl = document.getElementById("hint");
+    hintEl.textContent = `\uD83D\uDCA1 ${entry.hint}`;
+    hintEl.hidden = false;
+    hintEl.title = "Click to dismiss";
+    hintEl.onclick = () => { hintEl.hidden = true; };
+  }
+
   const host = qs.get("cdn") || registry.cdn || "https://i.copy.sh/";
   const relayUrl = qs.get("relay_url") || registry.relay || "wisps://anura.pro/";
   const cfg = entry.config || {};

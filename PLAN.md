@@ -59,10 +59,10 @@ the badge on the landing page.
 | id | browser/engine | status | notes |
 | --- | --- | --- | --- |
 | kolibrios | WebView (+ NetSurf) | ✅ boots | 1024×768 desktop in ~10s; Wisp connects; CI `@smoke` |
-| windows98 | Internet Explorer (Trident) | ✅ boots | restores from state; CI `@state` |
-| windows2000 | Internet Explorer 5 (Trident) | ⏳ unverified | state 29 MB; should work like win98 |
+| windows98 | Internet Explorer (Trident) | ✅ boots | restores from state; CI `@state`; needs `networking.bat` |
+| windows2000 | IE5 + K-Meleon + Lynx + Retrozilla | ✅ boots | restores from state; CI `@state`; 4 browsers! run `networking.bat` |
 | windowsme | Internet Explorer (Trident) | ⏳ unverified | state present |
-| haiku | WebPositive (WebKit) | ⏳ unverified | state 38 MB; modern engine — high value |
+| haiku | WebPositive (WebKit) + Links | ✅ boots | restores from state; CI `@state`; run `networking.sh` |
 | reactos | IE-compatible shell | ⏳ unverified | virtio NIC, acpi |
 | serenityos | Ladybird (LibWeb) | ⏳ unverified | part URL `serenity-v3/0-1048576.img` 404'd — investigate part layout |
 | dsl | Dillo + Firefox | ⏳ unverified | 52 MB ISO, boots X from CD-ROM (slow) |
