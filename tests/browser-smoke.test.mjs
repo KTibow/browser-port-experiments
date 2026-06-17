@@ -1214,6 +1214,87 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(trustedImeByTypeAndCode.get('beforeinput-keydown:233')?.char, 'é', `expected trusted IME commit keydown mapping, got ${JSON.stringify(trustedImeCommitCoverage)}`);
     assert.equal(trustedImeByTypeAndCode.get('beforeinput-keyup:233')?.source, 'beforeinput', `expected trusted IME commit keyup mapping, got ${JSON.stringify(trustedImeCommitCoverage)}`);
 
+    const beforeNonLatinImeCommit = await page.evaluate(() => ({
+      inputEventsForwarded: window.netsurfFramebufferState.inputEventsForwarded,
+      dirtyRectsObserved: window.netsurfFramebufferState.dirtyRectsObserved,
+      address: (() => {
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const data = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        return { black, nonGrey, nonWhite, hash };
+      })(),
+    }));
+    await cdpSession.send('Input.insertText', { text: 'あ' });
+    const trustedNonLatinImeCommitCoverage = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.lastInputEvent?.type !== 'beforeinput') return null;
+        const detail = state.lastInputEvent.detail;
+        if (detail?.text !== 'あ' || detail.inputType !== 'insertText') return null;
+        if (state.inputEventsForwarded !== before.inputEventsForwarded) return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const data = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const address = { black, nonGrey, nonWhite, hash };
+        const addressUnchanged = Object.entries(before.address).every(([key, value]) => address[key] === value);
+        if (!addressUnchanged) return null;
+        return {
+          before,
+          after: state.inputEventsForwarded,
+          dirtyAfter: state.dirtyRectsObserved,
+          compositionCommit: state.compositionCommit,
+          lastInputEvent: state.lastInputEvent,
+          address,
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+        };
+      },
+      beforeNonLatinImeCommit,
+    ).then((handle) => handle.jsonValue());
+    assert.equal(trustedNonLatinImeCommitCoverage.after, beforeNonLatinImeCommit.inputEventsForwarded, `expected non-Latin trusted IME commit metadata without unsupported libnsfb key forwarding, got ${JSON.stringify(trustedNonLatinImeCommitCoverage)}`);
+    assert.equal(trustedNonLatinImeCommitCoverage.dataset, 'beforeinput');
+    assert.deepEqual(
+      trustedNonLatinImeCommitCoverage.address,
+      beforeNonLatinImeCommit.address,
+      `expected non-Latin trusted IME commit to leave the Latin-1-only fbtk address raster unchanged, got ${JSON.stringify(trustedNonLatinImeCommitCoverage)}`,
+    );
+    assert.deepEqual(
+      trustedNonLatinImeCommitCoverage.lastInputEvent.detail,
+      { text: 'あ', inputType: 'insertText', isComposing: false, trusted: true, compositionActive: false, forwardedCharacters: 0, duplicateCompositionCommit: false },
+      `expected trusted non-Latin IME commit metadata to be recorded without key forwarding, got ${JSON.stringify(trustedNonLatinImeCommitCoverage)}`,
+    );
+    assert.deepEqual(
+      trustedNonLatinImeCommitCoverage.compositionCommit,
+      { text: 'あ', source: 'beforeinput', forwardedCharacters: 0, duplicateBeforeinputSuppressed: false, at: trustedNonLatinImeCommitCoverage.compositionCommit.at, trusted: true },
+      `expected trusted non-Latin IME commit guard metadata, got ${JSON.stringify(trustedNonLatinImeCommitCoverage)}`,
+    );
+    assert.ok(Number.isFinite(trustedNonLatinImeCommitCoverage.compositionCommit.at), `expected trusted non-Latin IME commit timestamp, got ${JSON.stringify(trustedNonLatinImeCommitCoverage)}`);
+
     const beforeDuplicateImeCommit = await page.evaluate(() => ({
       inputEventsForwarded: window.netsurfFramebufferState.inputEventsForwarded,
       dirtyRectsObserved: window.netsurfFramebufferState.dirtyRectsObserved,
