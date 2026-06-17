@@ -2457,6 +2457,151 @@ test('NetSurf about:welcome top navigation links expose distinct hover targets a
   }
 });
 
+test('NetSurf about:welcome PageDown-revealed link group exposes hover targets and offline activation', { timeout: 25_000 }, async () => {
+  const page = await newAppPage();
+  try {
+    await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
+    await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
+    await page.locator('#viewport').waitFor({ state: 'visible' });
+    await waitForNetSurfVisibleTextSignatures(page);
+    await page.waitForTimeout(500);
+
+    const canvasLocator = page.locator('#viewport');
+    const beforeFocusClickCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsForwarded);
+    await clickNetSurfCanvasPixel(canvasLocator, 320, 240);
+    const focusClick = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.inputEventsForwarded < before + 3 || state.lastInputEvent?.type !== 'pointerup-button') return null;
+        if (document.activeElement?.id !== 'netsurf-text-input') return null;
+        return { dirtyRectsObserved: state.dirtyRectsObserved, inputEventsForwarded: state.inputEventsForwarded };
+      },
+      beforeFocusClickCount,
+    ).then((handle) => handle.jsonValue());
+    const beforePageDownDirtyRects = focusClick.dirtyRectsObserved;
+    await page.keyboard.press('PageDown');
+    const pageDownLinkGroup = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 404, nonGrey: 1708, nonWhite: 11160, hash: 3968113013 },
+        },
+        address: {
+          region: { x: 95, y: 3, width: 520, height: 28 },
+          metrics: { black: 1503, nonGrey: 12610, nonWhite: 4129, hash: 452212341 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 844, nonGrey: 268532, nonWhite: 65617, hash: 3824838336 },
+        },
+        pageDownLinkBand: {
+          region: { x: 20, y: 290, width: 590, height: 85 },
+          metrics: { black: 448, nonGrey: 50150, nonWhite: 5461, hash: 3196037608 },
+        },
+        scrollbar: {
+          region: { x: 620, y: 38, width: 18, height: 424 },
+          metrics: { black: 0, nonGrey: 4337, nonWhite: 6784, hash: 3505816457 },
+        },
+      },
+      beforePageDownDirtyRects,
+    );
+    assert.equal(pageDownLinkGroup.lastInputEvent.type, 'keyup');
+    assert.equal(pageDownLinkGroup.lastInputEvent.detail.key, 'PageDown');
+    assert.equal(pageDownLinkGroup.lastInputEvent.detail.nsfb, 281);
+    assert.equal(pageDownLinkGroup.inputEventsDropped, 0, `expected no dropped input events while revealing the PageDown link group, got ${JSON.stringify(pageDownLinkGroup)}`);
+    assert.deepEqual(
+      pageDownLinkGroup.metrics.pageDownLinkBand,
+      { black: 448, nonGrey: 50150, nonWhite: 5461, hash: 3196037608 },
+      `expected deterministic PageDown-visible about:welcome link group raster band, got ${JSON.stringify(pageDownLinkGroup)}`,
+    );
+
+    await hoverNetSurfCanvasPixel(canvasLocator, 120, 330);
+    const firstPageDownLinkHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 930, nonGrey: 2234, nonWhite: 11160, hash: 1433516861 },
+        },
+        pageDownLinkBand: {
+          region: { x: 20, y: 290, width: 590, height: 85 },
+          metrics: { black: 448, nonGrey: 50150, nonWhite: 5461, hash: 3196037608 },
+        },
+      },
+      pageDownLinkGroup.dirtyRectsObserved,
+    );
+    assert.equal(firstPageDownLinkHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(firstPageDownLinkHover.cursor.hotspot, [4, 0], `expected first PageDown-visible about:welcome link hover to expose NetSurf's hand cursor, got ${JSON.stringify(firstPageDownLinkHover)}`);
+    assert.equal(firstPageDownLinkHover.cursor.rect[2] - firstPageDownLinkHover.cursor.rect[0], 16, `expected first PageDown-visible link hand cursor width, got ${JSON.stringify(firstPageDownLinkHover)}`);
+
+    await hoverNetSurfCanvasPixel(canvasLocator, 360, 330);
+    const secondPageDownLinkHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 695, nonGrey: 1999, nonWhite: 11160, hash: 2192098978 },
+        },
+        pageDownLinkBand: {
+          region: { x: 20, y: 290, width: 590, height: 85 },
+          metrics: { black: 448, nonGrey: 50150, nonWhite: 5461, hash: 3196037608 },
+        },
+      },
+      firstPageDownLinkHover.dirtyRectsObserved,
+    );
+    assert.equal(secondPageDownLinkHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(secondPageDownLinkHover.cursor.hotspot, [4, 0], `expected second PageDown-visible about:welcome link hover to expose NetSurf's hand cursor, got ${JSON.stringify(secondPageDownLinkHover)}`);
+    assert.notEqual(secondPageDownLinkHover.metrics.status.hash, firstPageDownLinkHover.metrics.status.hash, `expected PageDown-visible adjacent about:welcome links to expose distinct status-bar targets, got ${JSON.stringify({ firstPageDownLinkHover, secondPageDownLinkHover })}`);
+
+    const beforePageDownLinkActivationCount = secondPageDownLinkHover.inputEventsForwarded;
+    await clickNetSurfCanvasPixel(canvasLocator, 360, 330);
+    const pageDownLinkActivation = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+        },
+        address: {
+          region: { x: 95, y: 3, width: 520, height: 28 },
+          metrics: { black: 1503, nonGrey: 12610, nonWhite: 4129, hash: 452212341 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 844, nonGrey: 268532, nonWhite: 65617, hash: 3824838336 },
+        },
+        pageDownLinkBand: {
+          region: { x: 20, y: 290, width: 590, height: 85 },
+          metrics: { black: 448, nonGrey: 50150, nonWhite: 5461, hash: 3196037608 },
+        },
+        scrollbar: {
+          region: { x: 620, y: 38, width: 18, height: 424 },
+          metrics: { black: 0, nonGrey: 4337, nonWhite: 6784, hash: 3505816457 },
+        },
+      },
+      secondPageDownLinkHover.dirtyRectsObserved,
+    );
+    assert.equal(pageDownLinkActivation.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(pageDownLinkActivation.lastInputEvent.detail, { button: 0 });
+    assert.ok(pageDownLinkActivation.inputEventsForwarded >= beforePageDownLinkActivationCount + 3, `expected PageDown-visible link activation click forwarding, got ${JSON.stringify(pageDownLinkActivation)}`);
+    assert.equal(pageDownLinkActivation.inputEventsDropped, 0, `expected no dropped input events through PageDown-visible link activation, got ${JSON.stringify(pageDownLinkActivation)}`);
+    assert.deepEqual(
+      pageDownLinkActivation.metrics,
+      {
+        status: { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+        address: { black: 1503, nonGrey: 12610, nonWhite: 4129, hash: 452212341 },
+        content: { black: 844, nonGrey: 268532, nonWhite: 65617, hash: 3824838336 },
+        pageDownLinkBand: { black: 448, nonGrey: 50150, nonWhite: 5461, hash: 3196037608 },
+        scrollbar: { black: 0, nonGrey: 4337, nonWhite: 6784, hash: 3505816457 },
+      },
+      `expected PageDown-visible about:welcome link activation to visibly update offline status while preserving address/content/link rasters, got ${JSON.stringify(pageDownLinkActivation)}`,
+    );
+  } finally {
+    await closePage(page);
+  }
+});
+
 test('NetSurf about:welcome top visible search button submits an empty form with deterministic offline rasters', { timeout: 25_000 }, async () => {
   const page = await newAppPage();
   try {
