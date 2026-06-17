@@ -149,9 +149,19 @@ async function main() {
   titleEl.textContent = entry.name;
   engineEl.textContent = entry.engine;
 
-  if (entry.hint) {
+  // Touch / coarse-pointer device? (mobile, tablet). Drives the touch help text.
+  const isTouch = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches)
+    || (navigator.maxTouchPoints || 0) > 0
+    || "ontouchstart" in window;
+
+  const hintParts = [];
+  if (isTouch) {
+    hintParts.push("\uD83D\uDC46 Touch: drag to move the pointer \u00b7 tap = click \u00b7 long-press = right-click \u00b7 \u2328 = keyboard.");
+  }
+  if (entry.hint) hintParts.push(`\uD83D\uDCA1 ${entry.hint}`);
+  if (hintParts.length) {
     const hintEl = document.getElementById("hint");
-    hintEl.textContent = `\uD83D\uDCA1 ${entry.hint}`;
+    hintEl.textContent = hintParts.join("  \u2014  ");
     hintEl.hidden = false;
     hintEl.title = "Click to dismiss";
     hintEl.onclick = () => { hintEl.hidden = true; };
@@ -274,6 +284,70 @@ async function main() {
   });
 
   wireControls(emulator, screenContainer);
+  setupTouchControls(emulator, screenContainer);
+}
+
+// Touch support. v86's mouse adapter already turns a finger drag into relative
+// mouse-delta (trackpad-style: drag to move the guest cursor), but it has no
+// tap-to-click. Here we add: tap → left click, long-press → right click. We send
+// on v86's input bus (the public V86 wrapper has no mouse_click method). A tap
+// clicks wherever the cursor currently is (the guest mouse is relative-PS/2, so
+// we can't jump to an absolute spot) — hence the "drag then tap" trackpad model.
+function setupTouchControls(emulator, container) {
+  const TAP_MAX_MS = 350;
+  const MOVE_THRESHOLD = 12; // px before a touch counts as a drag, not a tap
+  const LONGPRESS_MS = 500;
+  let startX = 0, startY = 0, startT = 0, moved = false, handled = false;
+  let lpTimer = 0, multi = false;
+
+  function click(right) {
+    try {
+      emulator.bus.send("mouse-click", right ? [false, false, true] : [true, false, false]);
+      setTimeout(() => {
+        try { emulator.bus.send("mouse-click", [false, false, false]); } catch {}
+      }, 45);
+      window.__lastTouchClick = right ? "right" : "left"; // exposed for tests
+    } catch (e) { /* emulator/bus not ready yet — ignore */ }
+  }
+
+  container.addEventListener("touchstart", (e) => {
+    if (e.touches.length > 1) { multi = true; clearTimeout(lpTimer); return; }
+    multi = false;
+    const t = e.changedTouches[0];
+    startX = t.clientX; startY = t.clientY; startT = Date.now();
+    moved = false; handled = false;
+    clearTimeout(lpTimer);
+    lpTimer = setTimeout(() => {
+      if (!moved && !multi) {
+        handled = true;
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch {} }
+        click(true);
+      }
+    }, LONGPRESS_MS);
+  }, { passive: true });
+
+  container.addEventListener("touchmove", (e) => {
+    if (multi) return;
+    const t = e.changedTouches[0];
+    if (Math.abs(t.clientX - startX) > MOVE_THRESHOLD ||
+        Math.abs(t.clientY - startY) > MOVE_THRESHOLD) {
+      moved = true;
+      clearTimeout(lpTimer);
+    }
+  }, { passive: true });
+
+  container.addEventListener("touchend", (e) => {
+    clearTimeout(lpTimer);
+    if (multi) { if (e.touches.length === 0) multi = false; return; }
+    if (handled) return; // a long-press already fired a right click
+    const dt = Date.now() - startT;
+    if (!moved && dt <= TAP_MAX_MS) {
+      // Stop the browser's synthesized mouse events so v86's window mouse
+      // listeners don't fire a second (duplicate) click.
+      if (e.cancelable) e.preventDefault();
+      click(false);
+    }
+  }, { passive: false });
 }
 
 function shortName(u) {
@@ -304,6 +378,30 @@ function wireControls(emulator, container) {
   btn("fullscreen").onclick = () => {
     if (container.requestFullscreen) container.requestFullscreen();
   };
+
+  // On-screen keyboard toggle (mobile): focusing #phonekbd raises the soft
+  // keyboard; v86 forwards keys typed into a .phone_keyboard element to the
+  // guest. Toggling again blurs it (hides the keyboard).
+  const phoneKbd = document.getElementById("phonekbd");
+  const kbdToggle = btn("kbdtoggle");
+  if (kbdToggle && phoneKbd) {
+    // Keep focus on #phonekbd when the button is pressed, otherwise the button
+    // would steal focus before onclick runs and the toggle could never close.
+    kbdToggle.addEventListener("mousedown", (e) => e.preventDefault());
+    kbdToggle.onclick = () => {
+      if (document.activeElement === phoneKbd) {
+        phoneKbd.blur();
+        kbdToggle.classList.remove("is-active");
+      } else {
+        phoneKbd.focus();
+        kbdToggle.classList.add("is-active");
+      }
+    };
+    // Keep the button state in sync if focus changes by other means (e.g. the
+    // user taps the guest screen, which blurs the keyboard).
+    phoneKbd.addEventListener("blur", () => kbdToggle.classList.remove("is-active"));
+    phoneKbd.addEventListener("focus", () => kbdToggle.classList.add("is-active"));
+  }
 
   // Type-into-guest helper.
   const sendInput = document.getElementById("sendtext");

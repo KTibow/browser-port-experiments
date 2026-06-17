@@ -237,5 +237,49 @@ body.runner {
   background: #000;
   color: #d8d8d8;
   box-shadow: 0 8px 40px #00000080;
+  /* Touch: let drags move the guest cursor instead of scrolling/zooming the
+     page, and don't let a tap select text. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 #screen_container canvas { display: block; }
+
+/* On-screen keyboard target: present + focusable (so focusing raises the mobile
+   soft keyboard) but visually hidden. Not display:none / visibility:hidden, or
+   focus()/the keyboard won't work on iOS. */
+.phone_keyboard {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  background: transparent;
+  color: transparent;
+  z-index: -1;
+}
+#kbdtoggle.is-active { background: var(--accent); color: #0c0e14; border-color: var(--accent); }
+
+/* Touch / small-screen layout: stack the toolbar, give controls big tap targets,
+   and let the type-into-guest field grow to fill the row. */
+@media (max-width: 760px) {
+  .bar { gap: 0.5rem; padding: 0.45rem 0.6rem; }
+  .bar__status { margin-left: auto; }
+  .bar__controls { width: 100%; gap: 0.45rem; }
+  .bar__controls input#sendtext { flex: 1 1 8rem; width: auto; min-width: 0; }
+  .bar__controls button {
+    min-height: 2.4rem;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.9rem;
+  }
+  .bar__relay { flex: 1 1 7rem; min-height: 2.4rem; }
+}
+@media (pointer: coarse) {
+  /* Generous tap targets on touch devices regardless of width. */
+  .bar__controls button, .bar__back { min-height: 2.4rem; }
+}

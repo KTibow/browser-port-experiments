@@ -24,6 +24,7 @@
       <select id="relay" class="bar__relay" title="Switch the Wisp networking relay (applies on reload)"></select>
       <input id="sendtext" placeholder="type into guest&hellip; (Enter)" autocomplete="off" />
       <button id="sendbtn" title="Send text to the guest">Send</button>
+      <button id="kbdtoggle" title="Show/hide the on-screen keyboard (mobile)">&#9000; Keyboard</button>
       <button id="ctrlaltdel" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
       <button id="pause" title="Pause / resume the CPU">Pause</button>
       <button id="restart" title="Reboot the machine">Restart</button>
@@ -37,6 +38,13 @@
   </div>
 
   <div id="hint" class="hint" hidden></div>
+
+  <!-- On-screen keyboard target for touch devices. v86 forwards keys typed here
+       to the guest (it recognises the `phone_keyboard` class): keydown on
+       desktop/iOS, and input/insertText on Android. Kept off-screen + focusable
+       (not display:none, so focusing it raises the mobile soft keyboard). -->
+  <input id="phonekbd" class="phone_keyboard" autocomplete="off" autocapitalize="off"
+         autocorrect="off" spellcheck="false" aria-hidden="true" tabindex="-1" />
 
   <div class="stage">
     <!-- v86 fills this: it inserts a text <div> and a <canvas>. -->

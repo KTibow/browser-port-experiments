@@ -57,6 +57,11 @@ streams in (helpful for the multi-hundred-MB images), and a **Wisp relay picker*
 so you can switch relays (default `anura.pro`, plus `wisp.mercurywork.shop` or a
 custom one) if the default is blocked — it reloads with `?relay_url=`.
 
+It's also **usable on touch devices**: drag to move the guest cursor (trackpad
+style), **tap to left-click**, **long-press to right-click**, and tap the
+**⌨ Keyboard** button to pop the on-screen keyboard (keys are forwarded straight
+to the guest).
+
 ## Develop locally
 
 ```bash
@@ -93,6 +98,9 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
 - `@slow` — Android 4.4 boots to the launcher (~4-5 min; streams ~250 MB)
 - `@network` — boots Linux, DHCP, and `wget`s a live page over Wisp
 - `@ux` — the loading progress bar and the Wisp relay picker (offline/deterministic)
+- `@touch` — mobile/touch input: tap = click, long-press = right-click, drag =
+  move, and the on-screen keyboard forwards keys (boots KolibriOS, asserts on the
+  v86 input bus)
 
 `node scripts/probe.mjs <osId>` boots a single OS and saves a screenshot to
 `/tmp/probe-shots/` — handy for eyeballing a new image (needs `npm run serve`).

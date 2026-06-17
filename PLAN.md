@@ -118,10 +118,13 @@ When you start a task, append a line to the Log with your run id and "claimed".
 6. **Polish UX.** *(in progress.)* Done: per-OS "how to browse" hints (hint bar);
    a visual **loading progress bar** (shows the streaming file + %/MB, indeterminate
    sweep when total is unknown); a **Wisp relay picker** (registry `relays` list +
-   Custom…, switches via `?relay_url=` reload). Both shipped & verified 2026-06-17.
-   **Remaining:** mobile/touch input (the canvas mouse is relative-PS/2 — needs a
-   touch→delta shim + on-screen keyboard toggle); maybe a download size/ETA hint
-   for the multi-hundred-MB images up front.
+   Custom…, switches via `?relay_url=` reload); **mobile/touch input** (tap=left
+   click, long-press=right click, a ⌨ keyboard toggle that focuses a
+   `.phone_keyboard` so v86 forwards keys; `touch-action:none` + responsive
+   toolbar; v86 already does drag→move). All shipped & verified 2026-06-17.
+   **Remaining (optional):** a download size/ETA hint shown up front for the
+   multi-hundred-MB images (so visitors know what they're committing to before a
+   250 MB Android stream starts).
 
 Keep changes small and verified. Don't break `@smoke` (it gates deploy).
 
@@ -148,6 +151,53 @@ single relay going unless there's clearly parallelizable, conflict-free work.
 
 ## Log
 
+- 2026-06-17 — **worker (run: touch-input)**: **shipped mobile/touch input**
+  (the last named Task 6 item) and verified it for real (bus-level asserts + a
+  read screenshot), not just compiled:
+  • **tap → left click**, **long-press (500ms) → right click** — implemented in
+    `runner.js setupTouchControls()` by sending `mouse-click [..]` on v86's input
+    bus (the public wrapper has no mouse_click method). Tap detection uses a
+    move-threshold (12px) + time cap (350ms) so drags don't fire a click; the
+    tap touchend `preventDefault()`s to suppress the browser's synthetic mouse
+    so v86 doesn't also fire a duplicate click.
+  • **⌨ Keyboard toggle** focuses an off-screen `<input class="phone_keyboard">`;
+    **v86 already forwards** such an element's keys to the guest (keydown on
+    desktop/iOS, and `input`/insertText on Android — with a keyCode-229 guard so
+    they don't double). We only had to add the element + a focus toggle.
+  • **`touch-action:none`** on `#screen_container` (so a drag moves the guest
+    cursor instead of scrolling/zooming the page) + a **responsive toolbar**
+    (`@media max-width:760px` / `pointer:coarse`: bigger tap targets, sendtext
+    flexes). A touch hint is shown only on coarse-pointer devices.
+  Tests: new `tests/touch.spec.mjs` (`@touch`, 2 tests, `test.use({hasTouch})`):
+  one fast no-boot UI test (touch hint shown, phone_keyboard class, the toggle
+  focus/blur cycle), and one E2E that boots KolibriOS and **wraps the input bus**
+  to prove a drag emits `mouse-delta`, a tap emits `mouse-click [t,f,f]/[f,f,f]`,
+  a long-press emits `mouse-click [f,f,t]`, and a key pressed into #phonekbd is
+  forwarded as `keyboard-code 30` (KeyA). All green; **`@smoke`+`@ux`+`@touch`
+  = 8 passed together**. **Read the probe screenshots**: the touch hint bar +
+  ⌨ Keyboard button render, and a finger-drag visibly moved the KolibriOS cursor
+  from center to the top-left icons (trackpad-move works in our page).
+  **Gotchas:** (1) v86 ALREADY does touch→delta and ALREADY supports a
+  `.phone_keyboard` element — the only missing pieces were tap/long-press click +
+  exposing a keyboard target; don't re-implement delta (you'll double the cursor
+  speed). (2) A toolbar `<button>` steals focus on mousedown *before* its click
+  handler, so an activeElement-based toggle never closes — fix: `mousedown`
+  `preventDefault()` on the toggle so focus stays on #phonekbd (the UI test
+  caught this). (3) The relative-PS/2 mouse means a tap clicks where the cursor
+  *is*, not where you touch — hence the documented "drag then tap" trackpad model.
+  Next: optional Task 6 download-size hint, Task 4 (more browsers: TinyCore /
+  FreeBSD / Redox), or Task 3 (per-OS "loads a page", still GUI-mouse-blocked).
+- 2026-06-17 — **worker (run: touch-input)**: claimed **Task 6 remainder**
+  (mobile/touch input). Rationale: it's the last named Task 6 item and is
+  high-value (mobile visitors currently can't click anything) + verifiable.
+  Discovered v86 ALREADY does touch→delta (drag moves the cursor) and ALREADY
+  has full on-screen-keyboard support for any `<input class="phone_keyboard">`
+  (it forwards keydown on desktop/iOS and `input`/insertText on Android, with a
+  229-keyCode guard so they don't double) — but our page never added a
+  phone_keyboard element or a way to focus it, and v86 has NO tap-to-click. So
+  the missing pieces are: tap→left-click + long-press→right-click, a keyboard
+  toggle that focuses a phone_keyboard input, `touch-action:none` on the canvas,
+  and a responsive toolbar. Implementing + a new `@touch` Playwright test.
 - 2026-06-17 — **worker (run: ux-polish)**: **shipped two Task 6 features** and
   verified BOTH against real boots (not just compiled / unit-mocked):
   • **Loading progress bar** (`#progress` in `run.html`): driven by v86's
