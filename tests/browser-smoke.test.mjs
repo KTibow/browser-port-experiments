@@ -2321,6 +2321,139 @@ test('NetSurf about:welcome top visible search button submits an empty form with
   }
 });
 
+test('NetSurf about:welcome top visible search input focuses, types, and submits via keyboard', { timeout: 25_000 }, async () => {
+  const page = await newAppPage();
+  try {
+    await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
+    await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
+    await page.locator('#viewport').waitFor({ state: 'visible' });
+    await waitForNetSurfVisibleTextSignatures(page);
+
+    const canvasLocator = page.locator('#viewport');
+    const beforeTopSearchInputHoverDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+    await hoverNetSurfCanvasPixel(canvasLocator, 180, 365);
+    const topSearchInputHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 734, nonGrey: 2038, nonWhite: 11160, hash: 2169014071 },
+        },
+        topSearchInput: {
+          region: { x: 105, y: 360, width: 405, height: 30 },
+          metrics: { black: 0, nonGrey: 12150, nonWhite: 4588, hash: 853473648 },
+        },
+      },
+      beforeTopSearchInputHoverDirtyRects,
+    );
+    assert.equal(topSearchInputHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(topSearchInputHover.cursor.hotspot, [3, 8], `expected top-visible about:welcome search input hover to expose NetSurf's I-beam cursor, got ${JSON.stringify(topSearchInputHover)}`);
+    assert.equal(topSearchInputHover.cursor.rect[2] - topSearchInputHover.cursor.rect[0], 7, `expected top-visible search input I-beam cursor width, got ${JSON.stringify(topSearchInputHover)}`);
+    assert.deepEqual(
+      topSearchInputHover.metrics.status,
+      { black: 734, nonGrey: 2038, nonWhite: 11160, hash: 2169014071 },
+      `expected top-visible search input hover to rasterize its deterministic status-bar target, got ${JSON.stringify(topSearchInputHover)}`,
+    );
+
+    const beforeTopSearchInputFocusCount = topSearchInputHover.inputEventsForwarded;
+    await clickNetSurfCanvasPixel(canvasLocator, 180, 365);
+    const topSearchInputFocus = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        topSearchInput: {
+          region: { x: 105, y: 360, width: 405, height: 30 },
+          metrics: { black: 0, nonGrey: 12150, nonWhite: 4604, hash: 2971081840 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 1808, nonGrey: 268532, nonWhite: 135152, hash: 2124912880 },
+        },
+      },
+      topSearchInputHover.dirtyRectsObserved,
+    );
+    assert.equal(topSearchInputFocus.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(topSearchInputFocus.lastInputEvent.detail, { button: 0 });
+    assert.ok(topSearchInputFocus.inputEventsForwarded >= beforeTopSearchInputFocusCount + 3, `expected top-visible search input focus click forwarding, got ${JSON.stringify(topSearchInputFocus)}`);
+    assert.equal(topSearchInputFocus.activeElementId, 'netsurf-text-input');
+    assert.deepEqual(
+      topSearchInputFocus.metrics.topSearchInput,
+      { black: 0, nonGrey: 12150, nonWhite: 4604, hash: 2971081840 },
+      `expected click to visibly focus the top-visible about:welcome search text field, got ${JSON.stringify(topSearchInputFocus)}`,
+    );
+
+    const beforeTopSearchTypingCount = topSearchInputFocus.inputEventsForwarded;
+    await page.keyboard.type('abc');
+    const topSearchTypedText = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        topSearchInput: {
+          region: { x: 105, y: 360, width: 405, height: 30 },
+          metrics: { black: 129, nonGrey: 12150, nonWhite: 4734, hash: 3489577823 },
+        },
+        topSearchPanel: {
+          region: { x: 65, y: 350, width: 505, height: 100 },
+          metrics: { black: 525, nonGrey: 50500, nonWhite: 31339, hash: 4261106188 },
+        },
+      },
+      topSearchInputFocus.dirtyRectsObserved,
+    );
+    assert.equal(topSearchTypedText.lastInputEvent.type, 'keyup');
+    assert.equal(topSearchTypedText.lastInputEvent.detail.key, 'c');
+    assert.equal(topSearchTypedText.lastInputEvent.detail.nsfb, 99);
+    assert.ok(topSearchTypedText.inputEventsForwarded >= beforeTopSearchTypingCount + 6, `expected top-visible search typing to forward keydown/keyup events, got ${JSON.stringify(topSearchTypedText)}`);
+    assert.deepEqual(
+      topSearchTypedText.metrics.topSearchInput,
+      { black: 129, nonGrey: 12150, nonWhite: 4734, hash: 3489577823 },
+      `expected typed text to visibly rasterize in the top-visible about:welcome search field, got ${JSON.stringify(topSearchTypedText)}`,
+    );
+
+    await page.keyboard.press('Enter');
+    const topSearchSubmitByEnter = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 382, nonGrey: 1686, nonWhite: 11160, hash: 2143802459 },
+        },
+        address: {
+          region: { x: 95, y: 3, width: 520, height: 28 },
+          metrics: { black: 1436, nonGrey: 12610, nonWhite: 4582, hash: 1691840722 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 1278, nonGrey: 267668, nonWhite: 272453, hash: 1306608447 },
+        },
+        topSearchInput: {
+          region: { x: 105, y: 360, width: 405, height: 30 },
+          metrics: { black: 0, nonGrey: 12150, nonWhite: 12150, hash: 3156198976 },
+        },
+        logo: {
+          region: { x: 15, y: 118, width: 570, height: 45 },
+          metrics: { black: 0, nonGrey: 25650, nonWhite: 25650, hash: 4271475706 },
+        },
+      },
+      topSearchTypedText.dirtyRectsObserved,
+    );
+    assert.equal(topSearchSubmitByEnter.lastInputEvent.type, 'keyup');
+    assert.equal(topSearchSubmitByEnter.lastInputEvent.detail.key, 'Enter');
+    assert.equal(topSearchSubmitByEnter.lastInputEvent.detail.nsfb, 13);
+    assert.equal(topSearchSubmitByEnter.inputEventsDropped, 0, `expected no dropped input events through top-visible Enter search submit, got ${JSON.stringify(topSearchSubmitByEnter)}`);
+    assert.deepEqual(
+      topSearchSubmitByEnter.metrics,
+      {
+        status: { black: 382, nonGrey: 1686, nonWhite: 11160, hash: 2143802459 },
+        address: { black: 1436, nonGrey: 12610, nonWhite: 4582, hash: 1691840722 },
+        content: { black: 1278, nonGrey: 267668, nonWhite: 272453, hash: 1306608447 },
+        topSearchInput: { black: 0, nonGrey: 12150, nonWhite: 12150, hash: 3156198976 },
+        logo: { black: 0, nonGrey: 25650, nonWhite: 25650, hash: 4271475706 },
+      },
+      `expected top-visible Enter search submit to update deterministic offline status/address/content rasters without hard-coded networking, got ${JSON.stringify(topSearchSubmitByEnter)}`,
+    );
+  } finally {
+    await closePage(page);
+  }
+});
+
 test('NetSurf about:welcome search form exposes deterministic focus, typing, and submit rasters', { timeout: 25_000 }, async () => {
   const page = await newAppPage();
   try {
