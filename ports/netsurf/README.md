@@ -25,7 +25,7 @@ What it does **not** prove yet:
 
 - No Wisp networking yet. HTTP(S) is disabled to avoid libcurl/OpenSSL while the framebuffer path is being established. The public page only documents the future `BrowserPortWisp` handoff and deliberately does not hard-code a Wisp endpoint into HTML or C/WASM.
 - Input is now wired at the libnsfb event level with deterministic Playwright coverage for click, wheel, and key forwarding; text composition/IME and exhaustive keycode coverage are not done.
-- The page no longer polls/copies the full framebuffer each animation frame; it depends on the dedicated Emscripten libnsfb surface `update` callback. The source patch now includes cursor callbacks and C-side dirty-rect coalescing for the next artifact rebuild; the checked-in page also coalesces dirty callbacks before canvas painting.
+- The page no longer polls/copies the full framebuffer each animation frame; it depends on the dedicated Emscripten libnsfb surface `update` callback. The checked-in artifacts have been rebuilt from the externalized surface source patch and include cursor callbacks plus C-side dirty-rect coalescing; the checked-in page also coalesces dirty callbacks before canvas painting.
 
 ## Toolchain path
 
@@ -110,11 +110,10 @@ ports/netsurf/scripts/verify-artifact.sh
 npm test
 ```
 
-The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, samples deterministic NetSurf chrome/about:blank pixels, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
+The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, samples deterministic NetSurf chrome/about:blank pixels, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
 
 ## Suggested next steps
 
-1. Improve the current libnsfb Emscripten surface: cursor hooks, dirty-rect coalescing, and possibly a source patch file instead of embedding the C source in the shell script.
-2. Expand canvas input coverage (IME/text input, modifier state, more keycodes) and add a Playwright interaction assertion once a deterministic UI action is identified.
-3. Re-enable PNG/JPEG via Emscripten ports or vendored libraries after the dirty-rect path remains stable.
-4. Design a Wisp-backed fetcher before re-enabling HTTP(S); do not bake `wss://anura.pro/` into C code.
+1. Expand canvas input coverage (IME/text input, modifier state, more keycodes) and identify additional deterministic UI interactions beyond the current click/wheel/key/cursor metadata coverage.
+2. Re-enable PNG/JPEG via Emscripten ports or vendored libraries after the dirty-rect path remains stable.
+3. Design a Wisp-backed fetcher before re-enabling HTTP(S); do not bake `wss://anura.pro/` into C code.

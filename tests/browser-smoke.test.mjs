@@ -149,6 +149,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
     await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
     await page.locator('#viewport').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => window.netsurfFramebufferState?.cursor && document.body.dataset.netsurfFramebufferCursor);
 
     const result = await page.evaluate(() => {
       const canvas = document.querySelector('#viewport');
@@ -183,6 +184,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
         canvasTabIndex: canvas.tabIndex,
         dirtyRectCount: Number(canvas.dataset.dirtyRectCount || 0),
         dirtyRectCallbacks: Number(canvas.dataset.dirtyRectCallbacks || 0),
+        cursorDataset: document.body.dataset.netsurfFramebufferCursor,
       };
     });
 
@@ -202,6 +204,13 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.ok(result.state.dirtyRectCallbacksObserved >= result.state.dirtyRectsObserved, `expected dirty rect callback accounting, got ${JSON.stringify(result)}`);
     assert.ok(result.dirtyRectCallbacks >= result.dirtyRectCount, `expected canvas dirty rect callback accounting, got ${JSON.stringify(result)}`);
     assert.match(result.metadata, /BrowserPortWisp|standalone offline page/i);
+    assert.ok(result.state.cursor, `expected deterministic libnsfb cursor callback metadata, got ${JSON.stringify(result)}`);
+    assert.equal(result.cursorDataset, result.state.cursor.rect.join(','));
+    assert.equal(result.state.cursor.rect.length, 4);
+    assert.equal(result.state.cursor.hotspot.length, 2);
+    assert.ok(result.state.cursor.rect[2] > result.state.cursor.rect[0], `expected positive cursor width, got ${JSON.stringify(result)}`);
+    assert.ok(result.state.cursor.rect[3] > result.state.cursor.rect[1], `expected positive cursor height, got ${JSON.stringify(result)}`);
+    assert.match(result.metadata, /Cursor hook\d+,\d+,\d+,\d+ hotspot \d+,\d+/);
     assert.ok(result.opaque > 250_000, `expected opaque NetSurf framebuffer, got ${JSON.stringify(result)}`);
     assert.ok(result.nonWhite > 1_000, `expected browser chrome/content contrast, got ${JSON.stringify(result)}`);
     assert.ok(result.nonBlack > 1_000, `expected non-empty NetSurf pixels, got ${JSON.stringify(result)}`);
