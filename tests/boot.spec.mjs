@@ -20,7 +20,10 @@ test("@smoke KolibriOS boots to a graphical desktop", async ({ page }) => {
 const stateOses = [
   { id: "windows98", minWidth: 600 },   // Internet Explorer (Trident)
   { id: "windows2000", minWidth: 600 }, // Internet Explorer 5 (Trident)
+  { id: "windowsme", minWidth: 600 },   // Internet Explorer (Trident)
   { id: "haiku", minWidth: 600 },       // WebPositive (WebKit)
+  { id: "reactos", minWidth: 600 },     // IE-compatible shell (virtio NIC)
+  { id: "serenityos", minWidth: 600, minColors: 20 }, // Ladybird (LibWeb); streams zstd parts
 ];
 
 for (const os of stateOses) {
@@ -28,7 +31,7 @@ for (const os of stateOses) {
     const info = await bootAndWaitForScreen(page, os.id, {
       timeoutMs: 220_000,
       minWidth: os.minWidth,
-      minColors: 8,
+      minColors: os.minColors || 8,
     });
     expect(info.width).toBeGreaterThanOrEqual(os.minWidth);
     await expect(page.locator("#status")).toHaveText("Running");
@@ -42,3 +45,25 @@ for (const os of stateOses) {
     }
   });
 }
+
+// Damn Small Linux is a live CD: no saved state. Its Syslinux bootloader waits
+// at a `boot:` prompt, so the registry uses `autokeys` to press Enter; then it
+// loads X11. The full fluxbox desktop has far more colors than the 16-color
+// boot splash, which is what we assert on.
+test("dsl boots its live CD into the X11 desktop @cdrom", async ({ page }, testInfo) => {
+  const info = await bootAndWaitForScreen(page, "dsl", {
+    timeoutMs: 220_000,
+    minWidth: 1000,   // X11 switches the canvas to 1024x768
+    minColors: 120,   // full desktop (wallpaper + conky + icons), not the splash
+  });
+  expect(info.width).toBeGreaterThanOrEqual(1000);
+  expect(info.colors).toBeGreaterThanOrEqual(120);
+  await expect(page.locator("#status")).toHaveText("Running");
+  await testInfo.attach("dsl.png", {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
+  if (process.env.SHOT_DIR) {
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/shot-dsl.png` });
+  }
+});

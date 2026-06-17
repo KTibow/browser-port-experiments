@@ -73,8 +73,13 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
 ## Tests
 
 - `@smoke` — landing page + KolibriOS graphical boot (no flaky deps; gates deploy)
-- `@state` — Windows 98 resumes from its saved state
+- `@state` — saved-state OSes resume a booted desktop (Win98/2000/ME, Haiku,
+  ReactOS, SerenityOS)
+- `@cdrom` — Damn Small Linux boots its live CD into the X11 desktop
 - `@network` — boots Linux, DHCP, and `wget`s a live page over Wisp
+
+`node scripts/probe.mjs <osId>` boots a single OS and saves a screenshot to
+`/tmp/probe-shots/` — handy for eyeballing a new image (needs `npm run serve`).
 
 ## Deployment note
 

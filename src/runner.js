@@ -130,6 +130,19 @@ async function main() {
   emulator.add_listener("emulator-started", () => {
     bootStarted = true;
     setStatus("Running", "ok");
+    // Some guests (e.g. DSL's Syslinux) pause at an interactive boot prompt and
+    // require a keypress to continue. `autokeys` lets the registry boot them
+    // unattended: a list of { delay(ms after start), text } sent into the guest.
+    if (Array.isArray(cfg.autokeys)) {
+      for (const k of cfg.autokeys) {
+        const delay = Number(k.delay) || 0;
+        const text = typeof k.text === "string" ? k.text : "";
+        if (!text) continue;
+        setTimeout(() => {
+          try { emulator.keyboard_send_text(text); } catch (e) { console.warn("autokeys", e); }
+        }, delay);
+      }
+    }
   });
 
   // Track Wisp / network activity so we can show it is actually connected.

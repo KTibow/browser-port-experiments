@@ -71,11 +71,11 @@ the badge on the landing page.
 | kolibrios | WebView (+ NetSurf) | ✅ boots | 1024×768 desktop in ~10s; Wisp connects; CI `@smoke` |
 | windows98 | Internet Explorer (Trident) | ✅ boots | restores from state; CI `@state`; needs `networking.bat` |
 | windows2000 | IE5 + K-Meleon + Lynx + Retrozilla | ✅ boots | restores from state; CI `@state`; 4 browsers! run `networking.bat` |
-| windowsme | Internet Explorer (Trident) | ⏳ unverified | state present |
+| windowsme | Internet Explorer (Trident) | ✅ boots | restores from state in ~2s; CI `@state`; Millennium desktop verified |
 | haiku | WebPositive (WebKit) + Links | ✅ boots | restores from state; CI `@state`; run `networking.sh` |
-| reactos | IE-compatible shell | ⏳ unverified | virtio NIC, acpi |
-| serenityos | Ladybird (LibWeb) | ⏳ unverified | part URL `serenity-v3/0-1048576.img` 404'd — investigate part layout |
-| dsl | Dillo + Firefox | ⏳ unverified | 52 MB ISO, boots X from CD-ROM (slow) |
+| reactos | IE-compatible shell | ✅ boots | restores from state in ~2s; CI `@state`; virtio NIC, acpi; v0.4.15 desktop verified |
+| serenityos | Ladybird (LibWeb) | ✅ boots | **fixed**: parts are zstd (`serenity-v3/.img.zst`, not `.img`); CI `@state`; desktop + terminal verified |
+| dsl | Dillo + Firefox | ✅ boots | live CD; Syslinux waits at `boot:` so registry uses `autokeys` to press Enter; X11 in ~50s; DHCP-over-Wisp connected; CI `@cdrom` |
 | (buildroot) | — (test harness only) | ✅ network | `@network`: DHCP + `wget http://example.com` over Wisp returns real HTML |
 
 The end-to-end **Wisp networking is proven** (the `@network` test fetches a live
@@ -86,14 +86,14 @@ loads a page over Wisp (most guests need their NIC enabled in-OS first).
 
 When you start a task, append a line to the Log with your run id and "claimed".
 
-1. **Verify the unverified browsers boot.** For each `⏳` row, add a boot test
-   (extend `tests/boot.spec.mjs`, tag `@state` for state images) and a screenshot
-   probe. If it renders a desktop, set `tested: "boots"`. If broken, set
-   `tested: "broken"` and write down why. Start with **haiku** (WebKit, high value)
-   and **windows2000**.
-2. **Fix SerenityOS image streaming.** `serenity-v3/0-1048576.img` 404s. Inspect
-   how copy.sh requests its parts (maybe a different chunk size or the alt part
-   format `00000000.img`). Try `fixed_chunk_size` variants or `partfile_alt_format`.
+1. ~~**Verify the unverified browsers boot.**~~ **DONE** (2026-06-17). All 8
+   browsers now render a real desktop and are `tested: "boots"`. Boot tests cover
+   every OS (`@smoke`/`@state`/`@cdrom`). New helpers: `scripts/probe.mjs` (manual
+   single-OS boot+screenshot) and the registry `autokeys` field (unattended boot
+   for guests that pause at a prompt, e.g. DSL).
+2. ~~**Fix SerenityOS image streaming.**~~ **DONE** (2026-06-17). copy.sh serves
+   zstd-compressed parts at `serenity-v3/.img.zst`; the config used `.img`. Now
+   fixed and verified booting from CDN.
 3. **Per-OS "loads a page" automation.** Where feasible, script the guest to open
    its browser and load a page over Wisp, asserting on pixels or, better, on serial
    for text browsers. KolibriOS has a CLI; Linux guests can run `links`.
@@ -147,3 +147,29 @@ single relay going unless there's clearly parallelizable, conflict-free work.
   step. Site is live with 8 browsers (4 verified). Spawned the next worker.
   Next up (task queue): verify ReactOS/SerenityOS/DSL/Windows ME; fix SerenityOS
   part URLs; per-OS "loads a page" automation.
+- 2026-06-17 — **worker**: claimed Task 1 (verify unverified browsers) + the
+  SerenityOS part-URL half of Task 2. Probed the CDN: windowsme
+  (`windowsme-v3/0-262144.img`) and reactos (`reactos-v3/0-1048576.img`) parts
+  resolve fine — configs were already correct, just unverified. SerenityOS 404'd
+  because copy.sh serves **zstd-compressed** parts at `serenity-v3/.img.zst` (not
+  `.img`); `serenity-v3/0-1048576.img.zst` returns 206. Fixing the config and
+  booting windowsme/reactos/serenity with screenshot probes to set `tested`.
+- 2026-06-17 — **worker (cont.)**: **Completed Tasks 1 + 2.** Verified all four
+  remaining browsers render real desktops (read the PNGs, not just pixel stats):
+  • **Windows ME** — state restore ~2s, Millennium desktop w/ Office icons.
+  • **ReactOS** — state restore ~2s, ReactOS 0.4.15-x86 desktop (virtio NIC).
+  • **SerenityOS** — fixed `.img→.img.zst`; boots to desktop + terminal
+    (`anon@courage`), Ladybird/LibWeb available.
+  • **Damn Small Linux** — live CD; X11 fluxbox desktop in ~50s with FireFox/Dillo
+    apps menu, and it **got a DHCP lease over Wisp** ("Wisp: connected",
+    192.168.86.100). All set to `tested: "boots"`.
+  Added boot tests: windowsme/reactos/serenityos to the `@state` list, plus a new
+  `@cdrom` DSL test (asserts the X11 desktop, not the boot splash). `@smoke` still
+  green (3 passed). New: `scripts/probe.mjs` for manual single-OS boot+screenshot.
+  **Gotchas learned:** (1) SerenityOS parts are zstd — use `.img.zst`. (2) Each
+  image's part chunk size differs (windowsme=256K, reactos/serenity=1M); probe the
+  *right* `0-<chunk>.img[.zst]` URL or you get false 404s. (3) DSL's Syslinux sits
+  at an interactive `boot:` prompt; added a generic data-driven `autokeys`
+  (`[{delay,text}]`) to the runner so such guests boot unattended — verified DSL
+  reaches X11 with no manual keypress. Next up: Task 3 (per-OS "loads a page"
+  automation) or Task 5 (mirror small images for CDN resilience).

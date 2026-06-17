@@ -60,7 +60,7 @@
       "blurb": "Windows Millennium Edition resumed from a saved state, with Internet Explorer.",
       "hint": "Enable networking (look for 'networking.bat' on the desktop), then open Internet Explorer.",
       "highlight": false,
-      "tested": "pending",
+      "tested": "boots",
       "config": {
         "memory_size": 268435456,
         "hda": { "url": "windowsme-v3/.img", "size": 1073741824, "async": true, "fixed_chunk_size": 262144, "use_parts": true },
@@ -93,7 +93,7 @@
       "blurb": "ReactOS is an open-source OS binary-compatible with Windows. Boots from a saved state to a familiar desktop. Networked through Wisp.",
       "hint": "Open a web browser from the Start menu; enable networking if prompted.",
       "highlight": false,
-      "tested": "pending",
+      "tested": "boots",
       "config": {
         "memory_size": 536870912,
         "hda": { "url": "reactos-v3/.img", "size": 734003200, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
@@ -111,10 +111,10 @@
       "blurb": "SerenityOS ships Ladybird, a from-scratch independent browser engine (LibWeb/LibJS). Resumed from a saved state.",
       "hint": "Open Ladybird (or Browser) from the taskbar.",
       "highlight": true,
-      "tested": "pending",
+      "tested": "boots",
       "config": {
         "memory_size": 536870912,
-        "hda": { "url": "serenity-v3/.img", "size": 734003200, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
+        "hda": { "url": "serenity-v3/.img.zst", "size": 734003200, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
         "state": { "url": "serenity_state-v4.bin.zst" },
         "mac_address_translation": true,
         "net_device_type": "ne2k"
@@ -126,13 +126,14 @@
       "engine": "Dillo + Mozilla Firefox",
       "era": "2003",
       "blurb": "A 50 MB Linux live CD that bundles the Dillo and Firefox browsers. Boots into X11 from CD-ROM.",
-      "hint": "Launch Dillo or Firefox from the desktop / menu once X11 is up.",
+      "hint": "It boots automatically; once the X11 desktop appears, launch Dillo or Firefox from the desktop / menu.",
       "highlight": false,
-      "tested": "pending",
+      "tested": "boots",
       "config": {
         "memory_size": 268435456,
         "cdrom": { "url": "dsl-4.11.rc2.iso", "size": 52824064, "async": false },
-        "net_device_type": "ne2k"
+        "net_device_type": "ne2k",
+        "autokeys": [{ "delay": 6000, "text": "\n" }]
       }
     }
   ]
