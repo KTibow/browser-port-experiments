@@ -293,6 +293,27 @@ cp "$WORKSPACE/netsurf/nsfb.wasm" "$ARTIFACT_DIR/nsfb.wasm"
 cp "$ARTIFACT_DIR/nsfb.js" "$PUBLIC_DIR/nsfb.js"
 cp "$ARTIFACT_DIR/nsfb.wasm" "$PUBLIC_DIR/nsfb.wasm"
 cp "$ROOT_DIR/public/browsers/netsurf/index.html" "$PUBLIC_DIR/index.html"
+cat > "$PUBLIC_DIR/build-manifest.txt" <<'EOF'
+Built by ports/netsurf/scripts/build-framebuffer-wasm.sh
+Frontend: full NetSurf framebuffer with libnsfb RAM surface
+JS entry: createNetSurfFrameBuffer; page calls netsurf_framebuffer_main and copies live nsfb_t pixels
+Canvas presenter: public page polls full-frame pixels and exposes window.netsurfFramebufferState/data-* metadata
+Networking: CURL disabled; offline about:, data:, file/resource fetchers only; future socket fetcher should use BrowserPortWisp from the app with no endpoint hard-coded in C/WASM
+EOF
+cat > "$PUBLIC_DIR/probe.html" <<'EOF'
+<!doctype html>
+<meta charset="utf-8" />
+<meta http-equiv="refresh" content="0; url=./" />
+<title>NetSurf WASM probe moved</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 60rem; line-height: 1.5; }
+  code { background: #f4f4f5; padding: .15rem .3rem; border-radius: .25rem; }
+</style>
+<h1>NetSurf WASM probe moved</h1>
+<p>The standalone libnsfb canvas probe has been superseded by the full NetSurf framebuffer frontend.</p>
+<p><a href="./">Open the NetSurf framebuffer canvas page</a>.</p>
+<p>Networking is still disabled in the artifact. The next networking lane should use <code>BrowserPortWisp</code> from the host app and must not hard-code a Wisp endpoint into NetSurf C/WASM code.</p>
+EOF
 
 ls -lh \
   "$ARTIFACT_DIR/nsfb.js" \

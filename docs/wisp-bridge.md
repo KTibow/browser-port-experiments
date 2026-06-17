@@ -75,7 +75,7 @@ This helper is for smoke tests and diagnostics, not a replacement for a full HTT
 
 ## WASM port integration pattern
 
-For Emscripten ports, keep engine networking asynchronous and delegate socket operations to JS. A minimal shape is:
+For Emscripten ports, keep engine networking asynchronous and delegate socket operations to JS. NetSurf is currently an offline framebuffer artifact; its public page mentions `BrowserPortWisp` only as the future handoff and intentionally avoids embedding the default endpoint in the NetSurf HTML or C/WASM artifact. A minimal Emscripten shape is:
 
 ```js
 const sockets = new Map();

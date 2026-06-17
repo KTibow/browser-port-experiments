@@ -17,14 +17,14 @@ What it proves:
 - NetSurf's build tools and core libraries can be cross-built to `wasm32-unknown-emscripten` with Ubuntu/Debian Emscripten 3.1.6.
 - The framebuffer target can compile and link as a JS/WASM artifact using the `ram` libnsfb surface.
 - The full `nsfb.js` artifact is modularized as `createNetSurfFrameBuffer`, starts from the public page, enters an Emscripten browser main loop, and exports its live framebuffer pointer/width/height/stride.
-- The public page copies NetSurf framebuffer frontend pixels (currently `-f ram -w 640 -h 480 about:blank`) into Canvas `ImageData`.
+- The public page copies NetSurf framebuffer frontend pixels (currently `-f ram -w 640 -h 480 about:blank`) into Canvas `ImageData`, exposes `window.netsurfFramebufferState`, and stamps `body[data-netsurf-framebuffer-*]` metadata for smoke tests.
 - The checked-in artifacts are intentionally offline: curl/networking, OpenSSL, JavaScript/Duktape, PNG/JPEG/WebP/JPEGXL, SVG, and freetype are disabled.
 
 What it does **not** prove yet:
 
-- No Wisp networking yet. HTTP(S) is disabled to avoid libcurl/OpenSSL while the framebuffer path is being established.
+- No Wisp networking yet. HTTP(S) is disabled to avoid libcurl/OpenSSL while the framebuffer path is being established. The public page only documents the future `BrowserPortWisp` handoff and deliberately does not hard-code a Wisp endpoint into HTML or C/WASM.
 - No canvas mouse/keyboard input is wired into NetSurf yet.
-- The page polls/copies the full framebuffer each animation frame; it does not yet use dirty-rect callbacks from a dedicated Emscripten libnsfb surface.
+- The page polls/copies the full framebuffer each animation frame; it does not yet use dirty-rect callbacks from a dedicated Emscripten libnsfb surface. That full-frame presenter is labelled `full-frame-poll` in page metadata so the next surface/input lane has a clear regression target.
 
 ## Toolchain path
 
@@ -108,7 +108,7 @@ ports/netsurf/scripts/verify-artifact.sh
 npm test
 ```
 
-The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, and samples non-empty full-NetSurf framebuffer pixels.
+The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts the exported full-frontend `nsfb_t` RAM-surface metadata (`full-frame-poll`, 640×480, 2560-byte stride), and samples non-empty full-NetSurf framebuffer pixels.
 
 ## Suggested next steps
 

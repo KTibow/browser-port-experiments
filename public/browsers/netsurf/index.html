@@ -14,6 +14,9 @@
       code { background: #020617; border-radius: 8px; padding: 0.1rem 0.3rem; }
       .note { color: #b8c0cc; line-height: 1.45; }
       .panel { background: #111827; border: 1px solid #334155; border-radius: 16px; padding: 1rem; margin: 1rem 0; }
+      .kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .75rem; margin: 0; }
+      .kv dt { color: #b8c0cc; }
+      .kv dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
       .ok { color: #4fd1c5; font-weight: 700; }
       .warn { color: #facc15; font-weight: 700; }
     </style>
@@ -25,12 +28,21 @@
       <section class="panel">
         <p class="note">
           This page runs the offline NetSurf framebuffer frontend compiled to WASM and copies the live
-          <code>nsfb_t</code> RAM framebuffer into Canvas <code>ImageData</code>. Networking is intentionally disabled;
-          the current command line is <code>-f ram -w 640 -h 480 about:blank</code>.
+          <code>nsfb_t</code> RAM framebuffer into Canvas <code>ImageData</code>. This is the full NetSurf
+          framebuffer frontend, not the earlier standalone canvas probe. Networking is intentionally disabled;
+          future socket work should consume <code>BrowserPortWisp</code> from the host app rather than baking an endpoint
+          into the WASM artifact. The current command line is <code>-f ram -w 640 -h 480 about:blank</code>.
         </p>
         <p id="status" class="note">Loading nsfb.js…</p>
       </section>
       <canvas id="viewport" width="640" height="480" aria-label="NetSurf framebuffer pixels"></canvas>
+      <section class="panel">
+        <h2>Framebuffer bridge</h2>
+        <dl id="metadata" class="kv" aria-live="polite">
+          <dt>Presenter</dt><dd>waiting for WASM</dd>
+          <dt>Wisp bridge</dt><dd>checking host page</dd>
+        </dl>
+      </section>
       <section class="panel">
         <h2>Runtime log</h2>
         <pre id="log" aria-live="polite"></pre>
@@ -42,7 +54,20 @@
       const status = document.querySelector('#status');
       const log = document.querySelector('#log');
       const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+      const metadata = document.querySelector('#metadata');
       let image = ctx.createImageData(canvas.width, canvas.height);
+      const framebufferState = {
+        presenter: 'full-frame-poll',
+        surface: 'full NetSurf framebuffer frontend nsfb_t RAM surface',
+        width: 0,
+        height: 0,
+        stride: 0,
+        ptr: 0,
+        framesCopied: 0,
+        moduleReady: false,
+        wispBridgeAvailable: false,
+      };
+      window.netsurfFramebufferState = framebufferState;
 
       const appendLog = (line) => {
         log.textContent += `${line}\n`;
@@ -53,12 +78,43 @@
         return module[`_${name}`] || (() => module.ccall(name, 'number', [], []));
       }
 
+      function getBrowserPortWisp() {
+        try {
+          return window.parent?.BrowserPortWisp || window.BrowserPortWisp;
+        } catch {
+          return window.BrowserPortWisp;
+        }
+      }
+
+      function renderMetadata() {
+        const bridge = getBrowserPortWisp();
+        framebufferState.wispBridgeAvailable = Boolean(bridge?.openTcpStream && bridge?.readEndpoint);
+        metadata.innerHTML = `
+          <dt>Presenter</dt><dd>${framebufferState.presenter}</dd>
+          <dt>Surface</dt><dd>${framebufferState.surface}</dd>
+          <dt>Geometry</dt><dd>${framebufferState.width || '?'} × ${framebufferState.height || '?'}; stride ${framebufferState.stride || '?'} bytes</dd>
+          <dt>WASM pointer</dt><dd>${framebufferState.ptr ? `0x${framebufferState.ptr.toString(16)}` : 'waiting'}</dd>
+          <dt>Frames copied</dt><dd>${framebufferState.framesCopied}</dd>
+          <dt>Wisp bridge</dt><dd>${framebufferState.wispBridgeAvailable ? 'BrowserPortWisp available for future socket fetcher' : 'not connected on this standalone offline page'}</dd>
+        `;
+      }
+
       function copyFramebufferToCanvas(module) {
         const ptr = exported(module, 'netsurf_framebuffer_ptr')();
         const width = exported(module, 'netsurf_framebuffer_width')();
         const height = exported(module, 'netsurf_framebuffer_height')();
         const stride = exported(module, 'netsurf_framebuffer_stride')();
         if (!ptr || !width || !height || !stride) return false;
+
+        framebufferState.ptr = ptr;
+        framebufferState.width = width;
+        framebufferState.height = height;
+        framebufferState.stride = stride;
+        document.body.dataset.netsurfFramebufferPresenter = framebufferState.presenter;
+        document.body.dataset.netsurfFramebufferSurface = 'frontend-nsfb-ram';
+        document.body.dataset.netsurfFramebufferWidth = String(width);
+        document.body.dataset.netsurfFramebufferHeight = String(height);
+        document.body.dataset.netsurfFramebufferStride = String(stride);
 
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width;
@@ -82,6 +138,7 @@
           }
         }
         ctx.putImageData(image, 0, 0);
+        framebufferState.framesCopied += 1;
         return true;
       }
 
@@ -96,6 +153,9 @@
           printErr: (line) => appendLog(`[stderr] ${line}`),
           noExitRuntime: true,
         });
+
+        framebufferState.moduleReady = true;
+        renderMetadata();
 
         try {
           module.ccall('netsurf_framebuffer_main', 'number', [], []);
@@ -113,6 +173,9 @@
             visible = true;
             status.innerHTML = '<span class="ok">Visible:</span> copied live NetSurf framebuffer bytes into Canvas ImageData.';
             document.body.dataset.netsurfFramebufferVisible = 'true';
+            renderMetadata();
+          } else if (visible && ticks % 30 === 0) {
+            renderMetadata();
           } else if (!visible && ticks > 120) {
             status.innerHTML = '<span class="warn">Waiting:</span> NetSurf module loaded, but no framebuffer pointer is exported yet.';
           }
@@ -132,6 +195,7 @@
         document.body.dataset.netsurfFramebufferVisible = 'error';
       });
 
+      renderMetadata();
       boot().catch((error) => {
         status.textContent = `NetSurf framebuffer failed: ${error.message}`;
         appendLog(error.stack || String(error));

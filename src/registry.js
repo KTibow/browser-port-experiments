@@ -26,7 +26,7 @@ export const plannedPorts = [
     priority: 1,
     artifactPath: './browsers/netsurf/',
     rationale:
-      'Small C browser engine with framebuffer front ends; an offline WASM framebuffer probe now presents deterministic pixels to a canvas while input/networking work continues.',
+      'Small C browser engine with framebuffer front ends; the offline WASM framebuffer frontend now exports its live nsfb_t RAM surface to a canvas while input/networking work continues.',
   },
   {
     id: 'ladybird-engine',

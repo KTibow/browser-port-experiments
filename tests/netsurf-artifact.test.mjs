@@ -27,8 +27,20 @@ test('NetSurf wasm artifacts have valid wasm magic headers', async () => {
 test('NetSurf public page exposes the full framebuffer bridge', async () => {
   const page = await readFile('public/browsers/netsurf/index.html', 'utf8');
   assert.match(page, /live\s+NetSurf\s+framebuffer/i);
+  assert.match(page, /full NetSurf\s+framebuffer frontend/i);
   assert.match(page, /canvas/i);
   assert.match(page, /nsfb\.js/);
   assert.match(page, /createNetSurfFrameBuffer/);
+  assert.match(page, /netsurfFramebufferState/);
+  assert.match(page, /BrowserPortWisp/);
+  assert.match(page, /full-frame-poll/);
   assert.doesNotMatch(page, /nsfb-canvas-probe\.js/);
+  assert.doesNotMatch(page, /wss:\/\/anura\.pro/i, 'public NetSurf page should not hard-code the shared Wisp endpoint');
+});
+
+test('legacy NetSurf probe page points at the full framebuffer frontend', async () => {
+  const page = await readFile('public/browsers/netsurf/probe.html', 'utf8');
+  assert.match(page, /superseded by the full NetSurf framebuffer frontend/i);
+  assert.match(page, /BrowserPortWisp/);
+  assert.doesNotMatch(page, /not a usable browser/i);
 });

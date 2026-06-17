@@ -169,12 +169,25 @@ test('NetSurf public page paints live full-framebuffer pixels', { timeout: 20_00
         nonWhite,
         nonBlack,
         status: document.querySelector('#status')?.textContent ?? '',
+        presenter: document.body.dataset.netsurfFramebufferPresenter,
+        surface: document.body.dataset.netsurfFramebufferSurface,
+        stride: Number(document.body.dataset.netsurfFramebufferStride),
+        state: window.netsurfFramebufferState,
+        metadata: document.querySelector('#metadata')?.textContent ?? '',
       };
     });
 
     assert.equal(result.width, 640);
     assert.equal(result.height, 480);
     assert.match(result.status, /live NetSurf framebuffer/i);
+    assert.equal(result.presenter, 'full-frame-poll');
+    assert.equal(result.surface, 'frontend-nsfb-ram');
+    assert.equal(result.stride, 2560);
+    assert.equal(result.state.presenter, 'full-frame-poll');
+    assert.equal(result.state.surface, 'full NetSurf framebuffer frontend nsfb_t RAM surface');
+    assert.ok(result.state.ptr > 0, `expected exported nsfb_t buffer pointer, got ${JSON.stringify(result)}`);
+    assert.ok(result.state.framesCopied >= 1, `expected copied frames, got ${JSON.stringify(result)}`);
+    assert.match(result.metadata, /BrowserPortWisp|standalone offline page/i);
     assert.ok(result.opaque > 250_000, `expected opaque NetSurf framebuffer, got ${JSON.stringify(result)}`);
     assert.ok(result.nonWhite > 1_000, `expected browser chrome/content contrast, got ${JSON.stringify(result)}`);
     assert.ok(result.nonBlack > 1_000, `expected non-empty NetSurf pixels, got ${JSON.stringify(result)}`);

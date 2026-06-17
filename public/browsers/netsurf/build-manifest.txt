@@ -1,4 +1,5 @@
 Built by ports/netsurf/scripts/build-framebuffer-wasm.sh
 Frontend: full NetSurf framebuffer with libnsfb RAM surface
 JS entry: createNetSurfFrameBuffer; page calls netsurf_framebuffer_main and copies live nsfb_t pixels
-Networking: CURL disabled; offline about:, data:, file/resource fetchers only
+Canvas presenter: public page polls full-frame pixels and exposes window.netsurfFramebufferState/data-* metadata
+Networking: CURL disabled; offline about:, data:, file/resource fetchers only; future socket fetcher should use BrowserPortWisp from the app with no endpoint hard-coded in C/WASM

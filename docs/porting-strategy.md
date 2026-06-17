@@ -31,6 +31,8 @@ GitHub Pages app
 
 NetSurf is the best initial candidate because it has small C code, framebuffer concepts, and existing SDL/framebuffer front ends. A useful first milestone is not full JavaScript support; it is a deterministic WASM build rendering a simple fetched or embedded page into a canvas.
 
+The current NetSurf lane has passed the canvas-probe phase: the checked-in public page runs the full framebuffer frontend and reads pixels from the exported `nsfb_t` RAM surface. Treat that as the regression baseline when replacing the full-frame polling presenter with a dirty-rect libnsfb/Emscripten surface.
+
 Suggested investigation commands for the next agent:
 
 ```bash
