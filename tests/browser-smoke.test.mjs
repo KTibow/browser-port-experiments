@@ -461,7 +461,7 @@ test('root page renders registry launch links and work queue', { timeout: 15_000
   }
 });
 
-test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', { timeout: 35_000 }, async () => {
+test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', { timeout: 40_000 }, async () => {
   const page = await newAppPage();
   try {
     await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
@@ -612,6 +612,69 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.ok(
       (await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved)) > toolbarBackNavigation.dirtyRectsObserved,
       `expected toolbar forward restore to preserve dirty-rect advancement, got ${JSON.stringify(toolbarBackNavigation)}`,
+    );
+
+    const stableAboutWelcomeChromeMetrics = {
+      toolbar: {
+        region: { x: 0, y: 0, width: 95, height: 36 },
+        metrics: { black: 145, nonGrey: 1804, nonWhite: 3420, hash: 2787099418 },
+      },
+      address: {
+        region: { x: 95, y: 3, width: 520, height: 28 },
+        metrics: { black: 1503, nonGrey: 12610, nonWhite: 4649, hash: 1458272501 },
+      },
+      status: {
+        region: { x: 0, y: 462, width: 620, height: 18 },
+        metrics: { black: 404, nonGrey: 1708, nonWhite: 11160, hash: 3968113013 },
+      },
+      content: {
+        region: { x: 0, y: 36, width: 640, height: 426 },
+        metrics: { black: 1808, nonGrey: 268532, nonWhite: 135133, hash: 4161839195 },
+      },
+      logo: {
+        region: { x: 15, y: 118, width: 570, height: 45 },
+        metrics: { black: 0, nonGrey: 25650, nonWhite: 24510, hash: 1950299052 },
+      },
+    };
+
+    const beforeReloadClick = await page.evaluate(() => ({
+      dirtyRectsObserved: window.netsurfFramebufferState.dirtyRectsObserved,
+      inputEventsForwarded: window.netsurfFramebufferState.inputEventsForwarded,
+    }));
+    await clickNetSurfCanvasPixel(canvasLocator, 62, 15);
+    const toolbarReloadStableChrome = await waitForNetSurfRegionMetrics(
+      page,
+      stableAboutWelcomeChromeMetrics,
+      beforeReloadClick.dirtyRectsObserved,
+    );
+    assert.equal(toolbarReloadStableChrome.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(toolbarReloadStableChrome.lastInputEvent.detail, { button: 0 });
+    assert.ok(toolbarReloadStableChrome.inputEventsForwarded >= beforeReloadClick.inputEventsForwarded + 3, `expected toolbar Reload click forwarding, got ${JSON.stringify(toolbarReloadStableChrome)}`);
+    assert.deepEqual(toolbarReloadStableChrome.cursor.hotspot, [4, 0], `expected toolbar Reload to expose NetSurf's hand cursor, got ${JSON.stringify(toolbarReloadStableChrome)}`);
+    assert.deepEqual(
+      toolbarReloadStableChrome.metrics,
+      Object.fromEntries(Object.entries(stableAboutWelcomeChromeMetrics).map(([name, expected]) => [name, expected.metrics])),
+      `expected toolbar Reload to preserve deterministic about:welcome chrome/status/content rasters, got ${JSON.stringify(toolbarReloadStableChrome)}`,
+    );
+
+    const beforeHomeClick = await page.evaluate(() => ({
+      dirtyRectsObserved: window.netsurfFramebufferState.dirtyRectsObserved,
+      inputEventsForwarded: window.netsurfFramebufferState.inputEventsForwarded,
+    }));
+    await clickNetSurfCanvasPixel(canvasLocator, 85, 15);
+    const toolbarHomeStableChrome = await waitForNetSurfRegionMetrics(
+      page,
+      stableAboutWelcomeChromeMetrics,
+      beforeHomeClick.dirtyRectsObserved,
+    );
+    assert.equal(toolbarHomeStableChrome.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(toolbarHomeStableChrome.lastInputEvent.detail, { button: 0 });
+    assert.ok(toolbarHomeStableChrome.inputEventsForwarded >= beforeHomeClick.inputEventsForwarded + 3, `expected toolbar Home click forwarding, got ${JSON.stringify(toolbarHomeStableChrome)}`);
+    assert.deepEqual(toolbarHomeStableChrome.cursor.hotspot, [4, 0], `expected toolbar Home to expose NetSurf's hand cursor, got ${JSON.stringify(toolbarHomeStableChrome)}`);
+    assert.deepEqual(
+      toolbarHomeStableChrome.metrics,
+      Object.fromEntries(Object.entries(stableAboutWelcomeChromeMetrics).map(([name, expected]) => [name, expected.metrics])),
+      `expected toolbar Home to preserve deterministic about:welcome chrome/status/content rasters, got ${JSON.stringify(toolbarHomeStableChrome)}`,
     );
 
     const beforeLogoLinkHoverDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
