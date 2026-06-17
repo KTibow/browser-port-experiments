@@ -986,6 +986,101 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       `expected deterministic scroll-revealed about:welcome link/lower-page glyph coverage after wheel, got ${JSON.stringify(wheelScrollSignatures)}`,
     );
     assert.ok(wheelScrollSignatures.dirtyRectsObserved > beforeScrollDirtyRects, `expected wheel scroll to preserve dirty-rect advancement, got ${JSON.stringify(wheelScrollSignatures)}`);
+
+    const beforeLinkHoverDirtyRects = wheelScrollSignatures.dirtyRectsObserved;
+    await hoverNetSurfCanvasPixel(canvasLocator, 130, 370);
+    const linkHoverStatusBar = await page.waitForFunction(
+      (minimumDirtyRects) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.dirtyRectsObserved <= minimumDirtyRects || state.lastInputEvent?.type !== 'pointermove') return null;
+        const cursor = state.cursor;
+        const linkHandCursor = cursor?.rect?.[0] >= 129 && cursor.rect[0] <= 132
+          && cursor.rect[1] >= 369 && cursor.rect[1] <= 372
+          && cursor.hotspot?.[0] === 4
+          && cursor.hotspot?.[1] === 0
+          && cursor.rect[2] - cursor.rect[0] === 16
+          && cursor.rect[3] - cursor.rect[1] === 22;
+        if (!linkHandCursor) return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const { data } = ctx.getImageData(0, 462, 620, 18);
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const status = { black, nonGrey, nonWhite, hash };
+        const visibleStatusUrl = black === 737 && nonGrey === 2041 && nonWhite === 11160 && hash === 4169533564;
+        return visibleStatusUrl ? {
+          dirtyRectsObserved: state.dirtyRectsObserved,
+          lastInputEvent: state.lastInputEvent,
+          cursor,
+          status,
+        } : null;
+      },
+      beforeLinkHoverDirtyRects,
+    ).then((handle) => handle.jsonValue());
+    assert.deepEqual(
+      linkHoverStatusBar.status,
+      { black: 737, nonGrey: 2041, nonWhite: 11160, hash: 4169533564 },
+      `expected scroll-revealed about:welcome link hover to visibly rasterize a status-bar URL, got ${JSON.stringify(linkHoverStatusBar)}`,
+    );
+    assert.deepEqual(linkHoverStatusBar.cursor.hotspot, [4, 0], `expected NetSurf link hover to expose its hand cursor hotspot, got ${JSON.stringify(linkHoverStatusBar)}`);
+
+    await hoverNetSurfCanvasPixel(canvasLocator, 320, 240);
+    const restoredStatusBarAfterLinkHover = await page.waitForFunction(
+      (minimumDirtyRects) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.dirtyRectsObserved <= minimumDirtyRects || state.lastInputEvent?.type !== 'pointermove') return null;
+        const cursor = state.cursor;
+        const normalCursor = cursor?.rect?.[0] >= 319 && cursor.rect[0] <= 322
+          && cursor.rect[1] >= 239 && cursor.rect[1] <= 242
+          && cursor.hotspot?.[0] === 0
+          && cursor.hotspot?.[1] === 0
+          && cursor.rect[2] - cursor.rect[0] === 12
+          && cursor.rect[3] - cursor.rect[1] === 22;
+        if (!normalCursor) return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const { data } = ctx.getImageData(0, 462, 620, 18);
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const status = { black, nonGrey, nonWhite, hash };
+        const statusRestored = black === 404 && nonGrey === 1708 && nonWhite === 11160 && hash === 3968113013;
+        return statusRestored ? {
+          dirtyRectsObserved: state.dirtyRectsObserved,
+          lastInputEvent: state.lastInputEvent,
+          cursor,
+          status,
+        } : null;
+      },
+      linkHoverStatusBar.dirtyRectsObserved,
+    ).then((handle) => handle.jsonValue());
+    assert.deepEqual(
+      restoredStatusBarAfterLinkHover.status,
+      { black: 404, nonGrey: 1708, nonWhite: 11160, hash: 3968113013 },
+      `expected moving off the about:welcome link to visibly restore the status bar raster, got ${JSON.stringify(restoredStatusBarAfterLinkHover)}`,
+    );
+
     await page.keyboard.press('a');
     const interaction = await page.waitForFunction(
       ({ before, deliveredBefore }) => {
