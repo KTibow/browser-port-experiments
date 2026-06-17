@@ -1,6 +1,6 @@
 # NetSurf framebuffer WASM lane
 
-This lane has a reproducible first NetSurf framebuffer build that reaches linked Emscripten JS/WASM artifacts.
+This lane has a reproducible NetSurf framebuffer build plus a browser-visible libnsfb RAM-surface canvas bridge.
 
 ## Current artifact
 
@@ -8,19 +8,25 @@ Checked in:
 
 - `ports/netsurf/artifacts/nsfb.js`
 - `ports/netsurf/artifacts/nsfb.wasm`
+- `ports/netsurf/artifacts/nsfb-canvas-probe.js`
+- `ports/netsurf/artifacts/nsfb-canvas-probe.wasm`
 - `public/browsers/netsurf/index.html`
 - `public/browsers/netsurf/nsfb.js`
 - `public/browsers/netsurf/nsfb.wasm`
+- `public/browsers/netsurf/nsfb-canvas-probe.js`
+- `public/browsers/netsurf/nsfb-canvas-probe.wasm`
 
 What it proves:
 
 - NetSurf's build tools and core libraries can be cross-built to `wasm32-unknown-emscripten` with Ubuntu/Debian Emscripten 3.1.6.
 - The framebuffer target can compile and link as a JS/WASM artifact using the `ram` libnsfb surface.
-- The artifact can be loaded from a Vite/GitHub Pages page and reaches `onRuntimeInitialized`.
+- The full `nsfb.js` artifact can be loaded from a Vite/GitHub Pages page and reaches Emscripten runtime startup.
+- A small `ports/netsurf/canvas-probe.c` harness can initialise a libnsfb RAM surface, draw into it, export pointer/width/height/stride, and copy those pixels into Canvas `ImageData` from `public/browsers/netsurf/`.
+- The checked-in artifacts are intentionally offline: curl/networking, OpenSSL, JavaScript/Duktape, PNG/JPEG/WebP/JPEGXL, SVG, and freetype are disabled.
 
 What it does **not** prove yet:
 
-- No canvas presentation yet. The current `NETSURF_FB_FRONTEND := ram` surface is an in-memory framebuffer, not an HTML canvas or SDL surface.
+- The visible canvas pixels are from the libnsfb RAM-surface harness, not yet from the full NetSurf browser window. The checked-in `nsfb.js` executable still starts as the offline framebuffer build using `NETSURF_FB_FRONTEND := ram`.
 - No Wisp networking yet. HTTP(S) is disabled to avoid libcurl/OpenSSL while the framebuffer/link path is being established.
 - The artifact is a probe, not a useful full browser entry. It should not be treated as meeting the repository's runnable-browser acceptance bar yet.
 
@@ -45,7 +51,7 @@ Important quirk: Ubuntu's Emscripten package has a frozen global cache, so first
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y emscripten make gcc g++ pkg-config perl flex bison gperf python3
+sudo apt-get install -y emscripten make gcc g++ pkg-config perl flex bison gperf python3 libpng-dev
 ports/netsurf/scripts/build-framebuffer-wasm.sh
 ports/netsurf/scripts/verify-artifact.sh
 ```
@@ -123,6 +129,11 @@ make -C libwapcaplet HOST=wasm32-unknown-emscripten install
 make -C netsurf TARGET=framebuffer HOST=wasm32-unknown-emscripten \
   CC=wasm32-unknown-emscripten-gcc CXX=wasm32-unknown-emscripten-g++ \
   LDFLAGS='-sUSE_ZLIB -sERROR_ON_UNDEFINED_SYMBOLS=0 -sEXPORTED_RUNTIME_METHODS=ccall,cwrap'
+
+emcc ports/netsurf/canvas-probe.c \
+  -Wl,--whole-archive "$PREFIX/lib/libnsfb.a" -Wl,--no-whole-archive \
+  -I"$PREFIX/include" --no-entry -sMODULARIZE=1 \
+  -sEXPORT_NAME=createNsfbCanvasProbe
 ```
 
 ## Blockers and local patches
@@ -132,24 +143,28 @@ make -C netsurf TARGET=framebuffer HOST=wasm32-unknown-emscripten \
 3. **libdom XML binding:** `libdom` defaults `WITH_EXPAT_BINDING := yes`; Emscripten sysroot has no expat. Disable expat/libxml for this first HTML-only probe. This also means `libsvgtiny` cannot build yet, so SVG is disabled for NetSurf.
 4. **curl disabled header leak:** even with `NETSURF_USE_CURL := NO`, `content/fetch.c` includes `content/fetchers/curl.h`, which includes `<curl/curl.h>`. Use a tiny local source patch/shim to typedef `CURLM` when `WITH_CURL` is absent.
 5. **zlib:** `utils/hashtable.c` includes `zlib.h`; provide Emscripten zlib or a source-built wasm zlib.
-6. **Canvas/frontend:** libnsfb's `ram` surface builds. The next real milestone is a browser/canvas-visible surface, probably either a custom libnsfb surface that exports a linear RGBA buffer to JS or an SDL2 surface using Emscripten canvas support.
+6. **NetSurf env.sh strict-mode fragility:** current NetSurf `docs/env.sh` references unset variables and probes optional compiler paths; `build-framebuffer-wasm.sh` relaxes `-e/-u` while sourcing it and leaves `nounset` off for the shell functions it defines.
+7. **Native PNG tool dependency:** NetSurf's build-time `convert_image` tool includes `<png.h>` even when target PNG decoding is disabled, so Ubuntu builds need `libpng-dev` for the native helper.
+8. **Canvas/frontend:** libnsfb's `ram` surface has no browser presentation callback. This relay added a separate exported RAM-surface harness that JS copies to canvas; the next real milestone is wiring the full NetSurf framebuffer frontend to that export path or adding a dedicated `emscripten`/SDL surface.
+9. **libnsfb surface registration in static archives:** `NSFB_SURFACE_DEF(ram, ...)` relies on a constructor in `ram.o`. The canvas probe links `libnsfb.a` with `-Wl,--whole-archive` so that constructor is retained; without it `nsfb_new(NSFB_SURFACE_RAM)` returns `NULL` in wasm.
 
 ## Verification performed
 
 ```bash
-ports/netsurf/build-wasm.sh
+ports/netsurf/scripts/build-framebuffer-wasm.sh
+ports/netsurf/scripts/verify-artifact.sh
 npm test
-# Manual Playwright probe against Vite preview opened:
-# /browser-port-experiments/browsers/netsurf/
-# Observed status text: "NetSurf WASM runtime initialized"
 ```
+
+The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-canvas-visible="true"]`, and samples non-empty canvas pixels.
 
 ## Suggested next steps
 
-1. Replace `NETSURF_FB_FRONTEND := ram` with a browser-visible surface:
-   - investigate `libnsfb/src/surface/*`, especially `ram.c`, and add an `emscripten` surface, or
-   - try `NETSURF_FB_FRONTEND := sdl` with Emscripten SDL2 (`-sUSE_SDL=2`) if NetSurf/libnsfb can use the SDL backend cleanly.
-2. Rebuild with `-sMODULARIZE=1 -sEXPORT_NAME=createNetSurf` so the public page can control startup and failure reporting without global `Module` coupling.
-3. Export framebuffer pointer/width/height or wire the SDL canvas, then add a Playwright smoke test that sees non-empty pixels.
-4. Re-enable PNG/JPEG via Emscripten ports or vendored libraries after canvas output works.
+1. Move from the standalone `canvas-probe.c` harness to full NetSurf pixels:
+   - expose the framebuffer frontend's live `nsfb_t` pointer/geometry after `fb_initialise`, or
+   - add an `emscripten` libnsfb surface modelled on `ram.c` whose `update` callback copies dirty rects to JS, or
+   - investigate the existing SDL1 libnsfb surface with Emscripten's SDL compatibility (`-sUSE_SDL=1`; the current upstream `sdl.c` includes `<SDL/SDL.h>`, not SDL2 headers).
+2. Rebuild the full NetSurf artifact with `-sMODULARIZE=1 -sEXPORT_NAME=createNetSurf` so the public page can control startup and failure reporting without global `Module` coupling.
+3. Once full NetSurf pixels are exported, switch the Playwright smoke test from the RAM-surface colour probe to asserting the browser chrome/about page renders.
+4. Re-enable PNG/JPEG via Emscripten ports or vendored libraries after full-canvas output works.
 5. Design a Wisp-backed fetcher before re-enabling HTTP(S); do not bake `wss://anura.pro/` into C code.

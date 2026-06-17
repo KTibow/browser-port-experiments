@@ -143,6 +143,31 @@ test('root page renders registry launch links and work queue', { timeout: 15_000
   }
 });
 
+test('NetSurf public canvas probe paints non-empty framebuffer pixels', { timeout: 15_000 }, async () => {
+  const page = await newAppPage();
+  try {
+    await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
+    await page.locator('body[data-netsurf-canvas-visible="true"]').waitFor({ state: 'attached' });
+    await page.locator('#viewport').waitFor({ state: 'visible' });
+
+    const sample = await page.evaluate(() => {
+      const canvas = document.querySelector('#viewport');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const points = [
+        ctx.getImageData(48, 48, 1, 1).data,
+        ctx.getImageData(220, 60, 1, 1).data,
+        ctx.getImageData(360, 60, 1, 1).data,
+      ].map((data) => Array.from(data));
+      return points;
+    });
+
+    assert.ok(sample.every((rgba) => rgba[3] === 255), `expected opaque framebuffer samples, got ${JSON.stringify(sample)}`);
+    assert.notDeepEqual(sample[0].slice(0, 3), sample[1].slice(0, 3), 'expected varied colours from libnsfb render');
+  } finally {
+    await closePage(page);
+  }
+});
+
 for (const registeredBrowser of browsers) {
   test(`browser route starts UI for ${registeredBrowser.id}`, { timeout: 15_000 }, async () => {
     const page = await newAppPage();

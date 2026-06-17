@@ -26,7 +26,7 @@ if ! command -v emcc >/dev/null 2>&1; then
   cat >&2 <<'MSG'
 emcc was not found. On the GitHub Actions Ubuntu image this probe uses:
   sudo apt-get update
-  sudo apt-get install -y emscripten make gcc g++ pkg-config perl flex bison gperf python3
+  sudo apt-get install -y emscripten make gcc g++ pkg-config perl flex bison gperf python3 libpng-dev
 MSG
   exit 127
 fi
@@ -87,7 +87,22 @@ if [[ ! -d "$WORKSPACE/netsurf/.git" ]]; then
 fi
 
 # shellcheck source=/dev/null
-HOST="$HOST_TRIPLE" TARGET_WORKSPACE="$WORKSPACE" REPO_BASE_URI="$REPO_BASE_URI" USE_CPUS="-j$JOBS" source "$WORKSPACE/netsurf/docs/env.sh"
+# env.sh probes for optional commands using failing command substitutions and
+# references unset variables on current NetSurf HEAD. Temporarily relax -e/-u
+# while sourcing it. Keep nounset off afterwards because ns-clone is a shell
+# function from env.sh and still references optional unset variables.
+export HOST="$HOST_TRIPLE"
+export TARGET_WORKSPACE="$WORKSPACE"
+export REPO_BASE_URI="$REPO_BASE_URI"
+export USE_CPUS="-j$JOBS"
+set +eu
+source "$WORKSPACE/netsurf/docs/env.sh"
+ENV_STATUS=$?
+set -eo pipefail
+if [[ "$ENV_STATUS" -ne 0 ]]; then
+  echo "failed to source NetSurf env.sh" >&2
+  exit "$ENV_STATUS"
+fi
 
 ns-clone --shallow -d
 
@@ -152,37 +167,118 @@ make -C "$WORKSPACE/netsurf" \
   LDFLAGS='-sUSE_ZLIB -sERROR_ON_UNDEFINED_SYMBOLS=0 -sEXPORTED_RUNTIME_METHODS=ccall,cwrap' \
   "-j$JOBS"
 
+# Browser-visible milestone: export a libnsfb RAM surface as a linear RGBA
+# buffer. This is intentionally separate from the NetSurf frontend executable
+# until the framebuffer frontend can keep its browser_window/nsfb pointer alive
+# for JS (or a dedicated emscripten surface lands in libnsfb).
+emcc "$PORT_DIR/canvas-probe.c" \
+  -Wl,--whole-archive "$PREFIX/lib/libnsfb.a" -Wl,--no-whole-archive \
+  -I"$PREFIX/include" \
+  -O2 \
+  --no-entry \
+  -sMODULARIZE=1 \
+  -sEXPORT_NAME=createNsfbCanvasProbe \
+  -sENVIRONMENT=web,worker \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sEXPORTED_FUNCTIONS='["_netsurf_canvas_probe_init","_netsurf_canvas_probe_render","_netsurf_canvas_probe_ptr","_netsurf_canvas_probe_width","_netsurf_canvas_probe_height","_netsurf_canvas_probe_stride"]' \
+  -sEXPORTED_RUNTIME_METHODS='["ccall"]' \
+  -o "$ARTIFACT_DIR/nsfb-canvas-probe.js"
+
 cp "$WORKSPACE/netsurf/nsfb" "$ARTIFACT_DIR/nsfb.js"
 cp "$WORKSPACE/netsurf/nsfb.wasm" "$ARTIFACT_DIR/nsfb.wasm"
 cp "$ARTIFACT_DIR/nsfb.js" "$PUBLIC_DIR/nsfb.js"
 cp "$ARTIFACT_DIR/nsfb.wasm" "$PUBLIC_DIR/nsfb.wasm"
+cp "$ARTIFACT_DIR/nsfb-canvas-probe.js" "$PUBLIC_DIR/nsfb-canvas-probe.js"
+cp "$ARTIFACT_DIR/nsfb-canvas-probe.wasm" "$PUBLIC_DIR/nsfb-canvas-probe.wasm"
 
 cat > "$PUBLIC_DIR/index.html" <<'HTML'
 <!doctype html>
 <meta charset="utf-8" />
-<title>NetSurf framebuffer WASM probe</title>
+<title>NetSurf framebuffer canvas probe</title>
 <style>
+  :root { color-scheme: dark; }
   body { margin: 0; font: 15px system-ui, sans-serif; background: #10131a; color: #f3f6fb; }
-  main { max-width: 960px; margin: 0 auto; padding: 24px; }
-  pre { min-height: 12rem; padding: 16px; overflow: auto; background: #05070a; border: 1px solid #2b3342; border-radius: 10px; }
-  .note { color: #b8c0cc; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px; }
+  canvas { display: block; width: 100%; max-width: 960px; height: auto; image-rendering: pixelated; background: #05070a; border: 1px solid #2b3342; border-radius: 10px; box-shadow: 0 18px 60px #0007; }
+  pre { min-height: 7rem; padding: 16px; overflow: auto; background: #05070a; border: 1px solid #2b3342; border-radius: 10px; }
+  .note { color: #b8c0cc; line-height: 1.45; }
+  .ok { color: #4fd1c5; font-weight: 700; }
 </style>
 <main>
-  <h1>NetSurf framebuffer WASM probe</h1>
-  <p class="note">Offline framebuffer build: curl, JS, PNG/JPEG/WebP/SVG are disabled. The current libnsfb surface is RAM, so this proves wasm startup/linkage rather than canvas presentation.</p>
-  <pre id="log">Loading nsfb.js…</pre>
+  <h1>NetSurf framebuffer canvas probe</h1>
+  <p class="note">This page now displays pixels from a wasm-built <code>libnsfb</code> RAM surface in an HTML canvas. It is still an offline probe: the full NetSurf framebuffer executable (<code>nsfb.js</code>) is checked in, but the browser page uses a small exported libnsfb surface harness until NetSurf's framebuffer frontend exposes its live surface or gains a dedicated Emscripten surface.</p>
+  <canvas id="viewport" width="640" height="360" aria-label="NetSurf libnsfb framebuffer pixels"></canvas>
+  <p id="status" class="note">Loading nsfb-canvas-probe.js…</p>
+  <pre id="log"></pre>
 </main>
+<script src="./nsfb-canvas-probe.js"></script>
 <script>
+  const canvas = document.querySelector('#viewport');
+  const status = document.querySelector('#status');
   const log = document.querySelector('#log');
-  window.Module = {
-    arguments: ['-f', 'ram', 'about:welcome'],
-    print: (text) => { log.textContent += `\n${text}`; },
-    printErr: (text) => { log.textContent += `\n[stderr] ${text}`; },
-    locateFile: (path) => path,
-    onRuntimeInitialized: () => { log.textContent += '\nRuntime initialised.'; },
-  };
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const image = ctx.createImageData(canvas.width, canvas.height);
+
+  const appendLog = (line) => { log.textContent += `${line}\n`; };
+
+  function copyFramebufferToCanvas(module) {
+    const ptr = module.ccall('netsurf_canvas_probe_ptr', 'number', [], []);
+    const width = module.ccall('netsurf_canvas_probe_width', 'number', [], []);
+    const height = module.ccall('netsurf_canvas_probe_height', 'number', [], []);
+    const stride = module.ccall('netsurf_canvas_probe_stride', 'number', [], []);
+    const heap = module.HEAPU8;
+
+    for (let y = 0; y < height; y += 1) {
+      const row = heap.subarray(ptr + y * stride, ptr + y * stride + width * 4);
+      image.data.set(row, y * width * 4);
+    }
+    ctx.putImageData(image, 0, 0);
+  }
+
+  async function boot() {
+    if (typeof createNsfbCanvasProbe !== 'function') {
+      throw new Error('createNsfbCanvasProbe was not defined by nsfb-canvas-probe.js');
+    }
+
+    const module = await createNsfbCanvasProbe({
+      locateFile: (path) => path,
+      print: appendLog,
+      printErr: (line) => appendLog(`[stderr] ${line}`),
+    });
+
+    const initResult = module.ccall('netsurf_canvas_probe_init', 'number', ['number', 'number'], [canvas.width, canvas.height]);
+    if (initResult !== 0) {
+      throw new Error(`libnsfb RAM surface init failed with code ${initResult}`);
+    }
+
+    let tick = 0;
+    const render = () => {
+      const renderResult = module.ccall('netsurf_canvas_probe_render', 'number', ['number'], [tick]);
+      if (renderResult !== 0) {
+        throw new Error(`libnsfb render failed with code ${renderResult}`);
+      }
+      copyFramebufferToCanvas(module);
+      if (tick === 0) {
+        status.innerHTML = '<span class="ok">Visible:</span> copied libnsfb RAM framebuffer bytes into Canvas ImageData.';
+        document.body.dataset.netsurfCanvasVisible = 'true';
+      }
+      tick = (tick + 1) & 0xffff;
+      requestAnimationFrame(render);
+    };
+    render();
+  }
+
+  boot().catch((error) => {
+    status.textContent = `NetSurf canvas probe failed: ${error.message}`;
+    appendLog(error.stack || String(error));
+    document.body.dataset.netsurfCanvasVisible = 'error';
+  });
 </script>
-<script src="./nsfb.js"></script>
 HTML
 
-ls -lh "$ARTIFACT_DIR/nsfb.js" "$ARTIFACT_DIR/nsfb.wasm" "$PUBLIC_DIR/index.html"
+ls -lh \
+  "$ARTIFACT_DIR/nsfb.js" \
+  "$ARTIFACT_DIR/nsfb.wasm" \
+  "$ARTIFACT_DIR/nsfb-canvas-probe.js" \
+  "$ARTIFACT_DIR/nsfb-canvas-probe.wasm" \
+  "$PUBLIC_DIR/index.html"

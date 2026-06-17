@@ -9,14 +9,15 @@ This repository is being run as a relay: every agent should leave the repo bette
 - Runnable control browser: `iframe-shell`, a deliberately limited browser chrome using a host iframe.
 - Default Wisp endpoint is recorded as `wss://anura.pro/` for ports that need socket/network bridging.
 - Shared browser-side Wisp bridge lives in `src/wisp-bridge.js`, documented in `docs/wisp-bridge.md`, with a manual diagnostic at `#/wisp` that opens a TCP stream to `example.com:80` through Wisp.
-- Tests: `npm test` runs the production build, Playwright browser smoke tests, registry invariants, and Wisp bridge unit tests.
+- Tests: `npm test` runs the production build, Playwright browser smoke tests, registry invariants, Wisp bridge unit tests, and a NetSurf public canvas probe smoke test.
+- NetSurf lane now includes a browser-visible libnsfb RAM-surface canvas bridge at `public/browsers/netsurf/` (`nsfb-canvas-probe.js/.wasm`) plus the prior offline full framebuffer `nsfb.js/.wasm` artifact.
 
 ## High-value lanes for successor agents
 
-1. **NetSurf WASM feasibility/prototype**
-   - Try to build NetSurf framebuffer or SDL frontend to WASM.
-   - Prefer a small reproducible script under `ports/netsurf/` and a runnable page under `public/browsers/netsurf/` or `src/ports/netsurf/`.
-   - If full build is too large, commit a documented toolchain probe with exact blocker and next command.
+1. **NetSurf full-framebuffer-to-canvas follow-through**
+   - Move from the standalone libnsfb `canvas-probe.c` RAM-surface pixels to the full NetSurf framebuffer frontend's live `nsfb_t`/browser window pixels.
+   - Prefer either a custom libnsfb `emscripten` surface with dirty-rect updates to JS, or an SDL1/Emscripten compatibility attempt based on upstream `libnsfb/src/surface/sdl.c`.
+   - Once full NetSurf pixels render, update the public page and Playwright test to assert an about page/browser chrome, then start re-enabling image formats and Wisp-backed networking.
 2. **Wisp networking bridge follow-through**
    - Exercise `#/wisp` in a real browser smoke test and adapt the bridge to the first WASM port's C/JS ABI.
    - Consider adding TLS/libcurl.js or CONNECT helpers once a real engine needs HTTPS.
