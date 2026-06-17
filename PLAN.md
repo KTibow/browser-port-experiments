@@ -35,6 +35,22 @@ Single source of truth = `browsers.json`. The runner (`src/runner.js`) builds th
 V86 options from each entry's `config`, prepending the CDN host to every disk/state
 `url`.
 
+## Deployment (IMPORTANT — needs owner action)
+
+The Pages site is `build_type: workflow`. **Agents cannot create files under
+`.github/workflows/`** (the relay PAT and `GITHUB_TOKEN` are both forbidden from
+modifying workflows), and we cannot edit the Pages config via API either. So:
+
+- The deploy workflow lives at `docs/deploy-pages-workflow.example.yaml`.
+- The repo **owner must copy it** to `.github/workflows/deploy-pages.yaml`
+  (this matches the prior convention here, commit "copy over its workflow").
+- Until that copy happens, the live URL keeps serving the **previous** attempt
+  (an old Vite/NetSurf app from before the repo was rewound). Our new site is
+  fully built & tested; it just isn't published yet.
+- `npm run build` produces `dist/`; the workflow uploads that to Pages and gates
+  on the `@smoke` tests. A second optional `docs/verify-workflow.example.yaml`
+  runs the full functional suite on a schedule.
+
 ## Verification status
 
 Run `npm test`. Statuses also live in `browsers.json` (`tested` field) and drive

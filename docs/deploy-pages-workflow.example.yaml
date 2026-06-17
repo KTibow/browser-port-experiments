@@ -1,11 +1,17 @@
-name: Deploy to GitHub Pages
+# ===========================================================================
+# ACTION REQUIRED (repo owner / a token with `workflows` permission):
+# Copy this file to `.github/workflows/deploy-pages.yaml`.
+#
+# Agents in this repo cannot create files under `.github/workflows/` (neither the
+# relay PAT nor GITHUB_TOKEN may modify workflows), and the Pages site is set to
+# `build_type: workflow`, so deployment cannot happen until this workflow exists.
+# This mirrors the earlier convention in this repo ("copy over its workflow").
+# ===========================================================================
+name: Deploy Pages
 
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "**.md"
-      - "PLAN.md"
   workflow_dispatch:
 
 permissions:
@@ -13,7 +19,6 @@ permissions:
   pages: write
   id-token: write
 
-# Allow one concurrent deployment; don't cancel an in-progress run.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -34,6 +39,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Smoke test (landing + KolibriOS graphical boot)
         run: npx playwright test --grep @smoke
+      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

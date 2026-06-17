@@ -12,7 +12,7 @@ drawn to a `<canvas>`, and connected to the live internet over the
 | Logic uses WASM | x86 CPU emulated to WebAssembly via [v86](https://github.com/copy/v86) |
 | Graphics use canvases | v86 renders the guest framebuffer to a `<canvas>` |
 | Networking uses Wisp (default `wss://anura.pro`) | v86's Wisp backend, `relay_url: "wisps://anura.pro/"` |
-| Build → GitHub Pages | `.github/workflows/deploy.yml` |
+| Build → GitHub Pages | `docs/deploy-pages-workflow.example.yaml` (owner copies into `.github/workflows/`) |
 | Root page links to each browser | generated from `browsers.json` |
 | Rigorously tested to actually function | Playwright suite, incl. a real HTTP fetch over Wisp |
 
@@ -75,5 +75,13 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
 - `@smoke` — landing page + KolibriOS graphical boot (no flaky deps; gates deploy)
 - `@state` — Windows 98 resumes from its saved state
 - `@network` — boots Linux, DHCP, and `wget`s a live page over Wisp
+
+## Deployment note
+
+This environment forbids agents from creating `.github/workflows/` files, and the
+Pages site uses `build_type: workflow`. The deploy workflow is therefore provided
+at `docs/deploy-pages-workflow.example.yaml` for the **repo owner to copy** into
+`.github/workflows/deploy-pages.yaml` (same convention as before). Until then the
+live URL still shows the previous attempt. See `PLAN.md` for details.
 
 See `PLAN.md` for the current status and what to work on next.

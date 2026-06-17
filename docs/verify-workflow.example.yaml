@@ -1,9 +1,12 @@
+# ===========================================================================
+# OPTIONAL (repo owner): copy to `.github/workflows/verify.yaml`.
+#
+# Runs the full functional suite (graphical boots, saved-state restores, and the
+# end-to-end Wisp networking test that fetches a live page through anura.pro).
+# These depend on external services (copy.sh CDN + anura.pro), so this is kept
+# separate from deploy and does not gate it.
+# ===========================================================================
 name: Verify (functional tests)
-
-# Runs the full functional suite: graphical boots, saved-state restores, and the
-# end-to-end Wisp networking test (fetches a live page through wss://anura.pro).
-# These depend on external services (copy.sh CDN + anura.pro) so this workflow is
-# kept separate from deploy and does not gate it.
 
 on:
   workflow_dispatch:

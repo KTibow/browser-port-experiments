@@ -45,3 +45,9 @@ Do this, in order:
 Guardrails: don't commit `node_modules/`, `dist/`, or huge image blobs. Don't
 remove the `no-referrer` meta tag. Don't break `@smoke`. Be transparent about
 pivots in PLAN.md.
+
+Deployment: you CANNOT create/edit files under `.github/workflows/` (push will be
+rejected) and cannot change the Pages config via API. The deploy workflow lives at
+`docs/deploy-pages-workflow.example.yaml` and the repo owner copies it in. Don't
+fight this; just keep `dist/` building and `@smoke` green so deploys work once
+installed.
