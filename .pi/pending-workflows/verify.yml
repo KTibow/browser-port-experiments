@@ -1,0 +1,34 @@
+name: Verify (functional tests)
+
+# Runs the full functional suite: graphical boots, saved-state restores, and the
+# end-to-end Wisp networking test (fetches a live page through wss://anura.pro).
+# These depend on external services (copy.sh CDN + anura.pro) so this workflow is
+# kept separate from deploy and does not gate it.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Full functional suite
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 14

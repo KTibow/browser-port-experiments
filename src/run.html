@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- The OS-image CDN (copy.sh) uses Referer-based hotlink protection; send no Referer. -->
+  <meta name="referrer" content="no-referrer" />
+  <title>Launching&hellip; &mdash; Browser Port Experiments</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="runner">
+  <div class="bar">
+    <a class="bar__back" href="index.html" title="Back to all browsers">&larr;</a>
+    <div class="bar__title">
+      <span id="title">Loading&hellip;</span>
+      <span id="engine" class="bar__engine"></span>
+    </div>
+    <div class="bar__status">
+      <span id="status" data-kind="busy">Starting&hellip;</span>
+      <span id="net" class="bar__net"></span>
+    </div>
+    <div class="bar__controls">
+      <input id="sendtext" placeholder="type into guest&hellip; (Enter)" autocomplete="off" />
+      <button id="sendbtn" title="Send text to the guest">Send</button>
+      <button id="ctrlaltdel" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
+      <button id="pause" title="Pause / resume the CPU">Pause</button>
+      <button id="restart" title="Reboot the machine">Restart</button>
+      <button id="fullscreen" title="Fullscreen the screen">Fullscreen</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <!-- v86 fills this: it inserts a text <div> and a <canvas>. -->
+    <div id="screen_container">
+      <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
+      <canvas style="display: none"></canvas>
+    </div>
+  </div>
+
+  <script type="module" src="runner.js"></script>
+</body>
+</html>

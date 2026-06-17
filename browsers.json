@@ -1,0 +1,131 @@
+{
+  "$comment": "Registry of browsers/OSes ported to the web via v86 (WASM CPU + canvas + Wisp networking). Image URLs are relative to the CDN host (default https://i.copy.sh/, overridable with ?cdn=). The `config` object mirrors v86 constructor options; the runner prepends the CDN host to every disk/state `url`.",
+  "cdn": "https://i.copy.sh/",
+  "relay": "wisps://anura.pro/",
+  "browsers": [
+    {
+      "id": "kolibrios",
+      "name": "KolibriOS",
+      "engine": "WebView",
+      "era": "2004 - present",
+      "blurb": "Tiny assembly-written OS that boots from a single 1.44 MB floppy in seconds. Ships a real graphical web browser (WebView) with TCP/IP networking.",
+      "highlight": true,
+      "tested": "boots",
+      "config": {
+        "fda": { "url": "kolibri.img", "size": 1474560 },
+        "memory_size": 134217728,
+        "net_device_type": "ne2k"
+      }
+    },
+    {
+      "id": "windows2000",
+      "name": "Windows 2000",
+      "engine": "Internet Explorer 5 (Trident / MSHTML)",
+      "era": "2000",
+      "blurb": "Microsoft Windows 2000 Professional resumed from a saved state, with the real Internet Explorer 5 / Trident engine. Networked through Wisp.",
+      "highlight": true,
+      "tested": "pending",
+      "config": {
+        "memory_size": 536870912,
+        "hda": { "url": "windows2k-v2/.img", "size": 2147483648, "async": true, "fixed_chunk_size": 262144, "use_parts": true },
+        "state": { "url": "windows2k_state-v4.bin.zst" },
+        "mac_address_translation": true,
+        "net_device_type": "ne2k"
+      }
+    },
+    {
+      "id": "windows98",
+      "name": "Windows 98",
+      "engine": "Internet Explorer (Trident / MSHTML)",
+      "era": "1998",
+      "blurb": "Windows 98 resumed from a saved state with Internet Explorer. A widely-used browser of its era running entirely in your tab.",
+      "highlight": false,
+      "tested": "boots",
+      "config": {
+        "memory_size": 134217728,
+        "hda": { "url": "windows98/.img", "size": 314572800, "async": true, "fixed_chunk_size": 262144, "use_parts": true },
+        "state": { "url": "windows98_state-v2.bin.zst" },
+        "mac_address_translation": true,
+        "net_device_type": "ne2k"
+      }
+    },
+    {
+      "id": "windowsme",
+      "name": "Windows ME",
+      "engine": "Internet Explorer (Trident / MSHTML)",
+      "era": "2000",
+      "blurb": "Windows Millennium Edition resumed from a saved state, with Internet Explorer.",
+      "highlight": false,
+      "tested": "pending",
+      "config": {
+        "memory_size": 268435456,
+        "hda": { "url": "windowsme-v3/.img", "size": 1073741824, "async": true, "fixed_chunk_size": 262144, "use_parts": true },
+        "state": { "url": "windows-me_state-v3.bin.zst" },
+        "net_device_type": "ne2k"
+      }
+    },
+    {
+      "id": "haiku",
+      "name": "Haiku",
+      "engine": "WebPositive (WebKit)",
+      "era": "2009 - present",
+      "blurb": "Haiku is a modern reimagining of BeOS. Its native browser, WebPositive, is built on WebKit, so it renders the modern web. Resumed from a saved state.",
+      "highlight": true,
+      "tested": "pending",
+      "config": {
+        "memory_size": 536870912,
+        "hda": { "url": "haiku-v5/.img", "size": 1342177280, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
+        "state": { "url": "haiku_state-v5.bin.zst" },
+        "acpi": true,
+        "net_device_type": "ne2k"
+      }
+    },
+    {
+      "id": "reactos",
+      "name": "ReactOS",
+      "engine": "Internet Explorer-compatible shell",
+      "era": "1998 - present",
+      "blurb": "ReactOS is an open-source OS binary-compatible with Windows. Boots from a saved state to a familiar desktop. Networked through Wisp.",
+      "highlight": false,
+      "tested": "pending",
+      "config": {
+        "memory_size": 536870912,
+        "hda": { "url": "reactos-v3/.img", "size": 734003200, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
+        "state": { "url": "reactos_state-v3.bin.zst" },
+        "acpi": true,
+        "mac_address_translation": true,
+        "net_device_type": "virtio"
+      }
+    },
+    {
+      "id": "serenityos",
+      "name": "SerenityOS",
+      "engine": "Ladybird (LibWeb)",
+      "era": "2018 - present",
+      "blurb": "SerenityOS ships Ladybird, a from-scratch independent browser engine (LibWeb/LibJS). Resumed from a saved state.",
+      "highlight": true,
+      "tested": "pending",
+      "config": {
+        "memory_size": 536870912,
+        "hda": { "url": "serenity-v3/.img", "size": 734003200, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
+        "state": { "url": "serenity_state-v4.bin.zst" },
+        "mac_address_translation": true,
+        "net_device_type": "ne2k"
+      }
+    },
+    {
+      "id": "dsl",
+      "name": "Damn Small Linux",
+      "engine": "Dillo + Mozilla Firefox",
+      "era": "2003",
+      "blurb": "A 50 MB Linux live CD that bundles the Dillo and Firefox browsers. Boots into X11 from CD-ROM.",
+      "highlight": false,
+      "tested": "pending",
+      "config": {
+        "memory_size": 268435456,
+        "cdrom": { "url": "dsl-4.11.rc2.iso", "size": 52824064, "async": false },
+        "net_device_type": "ne2k"
+      }
+    }
+  ]
+}

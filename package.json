@@ -1,0 +1,17 @@
+{
+  "name": "browser-port-experiments",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Real web browsers running entirely in your browser: WASM CPU emulation (v86), canvas graphics, and Wisp networking.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "node scripts/serve.mjs",
+    "test": "playwright test",
+    "test:install": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "v86": "0.5.372"
+  }
+}

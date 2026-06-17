@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Browser Port Experiments</title>
+  <meta name="description" content="Real web browsers running entirely in your browser: WASM CPU emulation, canvas graphics, and Wisp networking." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <h1>Browser Port Experiments</h1>
+    <p class="tag">
+      Real, full browsers running <em>entirely inside your browser</em> &mdash;
+      no servers doing the rendering. Each one is a complete operating system
+      emulated in WebAssembly (<a href="https://github.com/copy/v86">v86</a>),
+      drawn to a <code>&lt;canvas&gt;</code>, and connected to the live internet
+      over the <a href="https://github.com/MercuryWorkshop/wisp-protocol">Wisp</a>
+      protocol (default <code>wss://anura.pro</code>).
+    </p>
+    <p class="note">
+      Pick a browser below. The first launch streams the OS image on demand, so
+      give it a moment. Click into the screen to capture your keyboard/mouse.
+    </p>
+  </header>
+
+  <main class="grid">
+<!--CARDS-->
+  </main>
+
+  <footer class="foot">
+    <p>
+      Logic: x86 emulated to WebAssembly &middot; Graphics: canvas &middot;
+      Networking: Wisp &rarr; <code>wss://anura.pro</code>.
+      OS images streamed from <a href="https://copy.sh/v86/">copy.sh</a>'s CDN.
+    </p>
+    <p>
+      <a href="https://github.com/KTibow/browser-port-experiments">Source &amp; build details</a>
+    </p>
+  </footer>
+</body>
+</html>
