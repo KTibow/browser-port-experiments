@@ -28,6 +28,7 @@ run their *native* browsers — so we get real, feature-complete engines:
 - **ReactOS** → Windows-compatible shell
 - **SerenityOS** → Ladybird (independent LibWeb engine)
 - **9front** (Plan 9 fork) → Mothra + NetSurf
+- **Redox OS** (modern Rust microkernel + Orbital GUI) → NetSurf
 - **SliTaz GNU/Linux** → Midori + TazWeb (WebKitGTK)
 - **Android 4.4 (KitKat)** → AOSP Browser (WebKit)
 - **Damn Small Linux** → Dillo + Firefox
@@ -91,8 +92,9 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
 - `@smoke` — landing page + KolibriOS graphical boot from the **self-hosted**
   mirror (no third-party deps; gates deploy)
 - `@cdn` — KolibriOS still boots streaming from copy.sh (hotlink regression guard)
-- `@state` — saved-state OSes resume a booted desktop (Win98/2000/ME, Haiku,
-  ReactOS, SerenityOS, 9front)
+- `@state` — saved-state OSes resume a booted desktop (Win95/98/2000/ME, Haiku,
+  ReactOS, SerenityOS, 9front; and Redox, which auto-logs-in via `autokeys` to
+  its Orbital desktop)
 - `@cdrom` — Damn Small Linux boots its live CD into the X11 desktop
 - `@livecd` — SliTaz live-boots to its graphical Openbox desktop (Midori/WebKit)
 - `@slow` — Android 4.4 boots to the launcher (~4-5 min; streams ~250 MB)

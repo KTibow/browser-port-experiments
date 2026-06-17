@@ -160,6 +160,24 @@
       }
     },
     {
+      "id": "redox",
+      "name": "Redox OS",
+      "engine": "NetSurf",
+      "era": "2015 - present",
+      "blurb": "Redox is a modern, Unix-like operating system written from scratch in Rust around a microkernel, with its own Orbital GUI desktop. Its demo image ships the NetSurf web browser. Resumed here from a saved state and auto-logged-in to the Orbital desktop.",
+      "hint": "You'll be auto-logged-in. From the Orbital desktop, open NetSurf (Browser) from the bottom taskbar / launcher. (Note: this fast state-restore image has no working NIC driver, so live browsing may not connect.)",
+      "highlight": true,
+      "tested": "boots",
+      "config": {
+        "memory_size": 1073741824,
+        "hda": { "url": "redox_demo_i686_2024-09-07_1225_harddrive/.img", "size": 671088640, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
+        "state": { "url": "redox_state-v2.bin.zst" },
+        "acpi": true,
+        "net_device_type": "ne2k",
+        "autokeys": [{ "delay": 6000, "text": "\n" }, { "delay": 11000, "text": "\n" }]
+      }
+    },
+    {
       "id": "slitaz",
       "name": "SliTaz GNU/Linux",
       "engine": "Midori / TazWeb (WebKitGTK)",

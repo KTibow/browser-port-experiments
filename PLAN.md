@@ -77,6 +77,7 @@ the badge on the landing page.
 | reactos | IE-compatible shell | ✅ boots | restores from state in ~2s; CI `@state`; virtio NIC, acpi; v0.4.15 desktop verified |
 | serenityos | Ladybird (LibWeb) | ✅ boots | **fixed**: parts are zstd (`serenity-v3/.img.zst`, not `.img`); CI `@state`; desktop + terminal verified |
 | 9front | Mothra + NetSurf (Plan 9) | ✅ boots | restores from state in ~2s; CI `@state`; rio desktop + `term%` rc shell verified; ne2k, acpi |
+| redox | NetSurf (Orbital GUI) | ✅ boots | modern Rust microkernel OS; restores from state to the Orbital **login** screen, then `autokeys` auto-logs-in (`user`/empty pw) → JWST-wallpaper desktop (~80s for the wallpaper to decode); CI `@state`. **ne2k** (state was saved with the ne2k default — virtio corrupts state/triple-faults); Redox has no ne2k driver so in-guest networking is unavailable on this path (see Log) |
 | slitaz | Midori + TazWeb (WebKitGTK) | ✅ boots | live boot (ISO as hda); auto-boots through lang menu to a 1280×720 Openbox desktop in ~135s; **DHCP-over-Wisp auto-connects**; CI `@livecd`; Midori+TazWeb confirmed in ISO rootfs |
 | android4 | AOSP Browser (WebKit) | ✅ boots | Android-x86 4.4 KitKat; full boot ~4-5min (streams ~250 MB), reaches the real launcher; Wisp connects; CI `@slow` (440s budget) |
 | dsl | Dillo + Firefox | ✅ boots | live CD; Syslinux waits at `boot:` so registry uses `autokeys` to press Enter; X11 in ~50s; DHCP-over-Wisp connected; CI `@cdrom` |
@@ -164,6 +165,55 @@ file if the process should change. Avoid spawning many agents at once — keep a
 single relay going unless there's clearly parallelizable, conflict-free work.
 
 ## Log
+
+- 2026-06-17 — **worker (run: redox)**: **Completed** the Redox OS add (now **13
+  browsers**, 9 verified). Verified for real (read the screenshots, not just a
+  green check):
+  • Redox restores from `redox_state-v2.bin.zst` to the Orbital **login** screen
+    (1280×1024, username `user` pre-filled). The runner's existing `autokeys`
+    mechanism presses **Enter** (the `user` account has an empty password —
+    confirmed in Redox's `config/base.toml`: `[users.user] password = ""`), which
+    logs in and brings up the real **Orbital desktop** with the JWST Tarantula
+    Nebula wallpaper. I watched the full auto-login flow with NO manual input:
+    login(124 colors) → form transition(4) → desktop solid bg(129–133) → wallpaper
+    desktop(**11825 colors**) at ~81s. Status "Running", **0 page errors**.
+  • Added a dedicated **`@state`** test (`redox … auto-logs-in to the Orbital
+    desktop`) that asserts the rich wallpaper desktop (≥1000×, **≥800 colors**) so
+    it proves we got **past the login prompt** to the desktop where NetSurf lives
+    — not just the login screen. Passes in **1.4m**; `@smoke` still green (3
+    passed), and the landing-page test confirms all 13 browsers list.
+  **Gotchas learned (important):** (1) **The NIC type must match what the state
+    was saved with.** copy.sh's redox profile leaves the NIC at the **ne2k**
+    default, so the state captured an ne2k device. Restoring with **virtio**
+    (which I tried first, since Redox *has* a `virtio-netd` driver but no ne2k
+    driver) changed the PCI layout and **triple-faulted**: status stuck at "CPU
+    running…" (emulator-started never fired) and the first keypress caused an
+    infinite `do_page_walk`→`call_interrupt_vector` recursion (RangeError: max
+    call stack). Switching to **ne2k** restored cleanly. **Consequence:** Redox
+    has no ne2k driver, so **in-guest networking is unavailable** on this fast
+    state-restore path (Wisp never sees a send). The desktop + browser still work;
+    `tested: "boots"` is the honest status (we don't claim networked). A future
+    option for Redox networking would be the *cold-boot* image (`redox-boot`, no
+    state) with virtio — much slower, deferred. (2) `autokeys` (originally added
+    for DSL's `boot:` prompt) generalizes perfectly to **auto-login** — a list of
+    `{delay, text}` Enter presses (I send at 6s and 11s for robustness) takes the
+    guest from the login screen to the desktop unattended. (3) Redox's Orbital
+    wallpaper is a big JPEG that decodes slowly in software emulation (~80s),
+    so the desktop only reaches its high color count well after login — budget
+    the test accordingly (320s). Next: more browsers (Task 4: TinyCore / FreeBSD /
+    Windows NT 4.0), the Task 6 download-size hint, or Task 3 GUI page-load.
+- 2026-06-17 — **worker (run: redox)**: claimed **Task 4** (add more useful
+  browsers) — the top open queue item; Tasks 1/2/3/5 are done and Task 3's GUI
+  remainder is still relative-mouse-blocked. Picked **Redox OS** (the PLAN's own
+  listed candidate: "Redox (state image; check for a browser)"). Checked it for a
+  browser: Redox's `config/desktop.toml` includes **`netsurf = {}`**, so the demo
+  image ships **NetSurf** on the Orbital GUI desktop — a genuinely novel, modern
+  platform (Rust microkernel) using the proven low-risk state-restore path. CDN
+  parts + `redox_state-v2.bin.zst` resolve (206) with no Referer. copy.sh's redox
+  profile leaves the NIC at the ne2k default, but Redox has **no ne2k driver** —
+  only `net/virtio-netd` (+ rtl8139/e1000) in its drivers tree — so I'll use
+  **virtio** to actually get Wisp networking (1024 MB RAM to match the state,
+  acpi). Booting a probe + reading the screenshot before flipping `tested`.
 
 - 2026-06-17 — **worker (run: browse)**: claimed **Task 3** (per-OS "loads a page"
   automation) — the queue-top unclaimed item, deferred by prior agents as

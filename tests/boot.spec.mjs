@@ -77,6 +77,36 @@ for (const os of stateOses) {
   });
 }
 
+// Redox OS (a modern Unix-like OS written from scratch in Rust around a
+// microkernel, with its own Orbital GUI desktop; the demo image ships NetSurf).
+// Its saved state restores to the Orbital LOGIN screen (user `user`, empty
+// password); the runner's `autokeys` presses Enter to AUTO-LOGIN, then the
+// Orbital desktop loads its JWST wallpaper (thousands of colors). We assert on
+// the rich wallpaper desktop (>=800 colors) so the test proves we got PAST the
+// login prompt to the real desktop where NetSurf lives — not just the login
+// screen (which is ~124 colors). The wallpaper JPEG decodes slowly under
+// software emulation (~80s observed), so this gets a generous budget. The state
+// was saved with the ne2k NIC default, so we must restore with ne2k (virtio
+// corrupts the device state and triple-faults).
+test("redox restores from state and auto-logs-in to the Orbital desktop @state", async ({ page }, testInfo) => {
+  test.setTimeout(320_000);
+  const info = await bootAndWaitForScreen(page, "redox", {
+    timeoutMs: 290_000,
+    minWidth: 1000,
+    minColors: 800,
+  });
+  expect(info.width).toBeGreaterThanOrEqual(1000);
+  expect(info.colors).toBeGreaterThanOrEqual(800);
+  await expect(page.locator("#status")).toHaveText("Running");
+  await testInfo.attach("redox.png", {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
+  if (process.env.SHOT_DIR) {
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/shot-redox.png` });
+  }
+});
+
 // SliTaz is a live boot (the ISO is attached as a hard disk). It auto-boots
 // through its language menu and brings up a full graphical desktop (1280x720)
 // with Midori (WebKitGTK), and DHCP over Wisp comes up on its own. We assert on
