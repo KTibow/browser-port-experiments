@@ -1480,6 +1480,106 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(playwrightNativeByTypeAndCode.get('beforeinput-keydown:248')?.char, 'ø', `expected Playwright high-level insertText keydown mapping, got ${JSON.stringify(playwrightNativeTextCoverage)}`);
     assert.equal(playwrightNativeByTypeAndCode.get('beforeinput-keyup:248')?.source, 'beforeinput', `expected Playwright high-level insertText keyup mapping, got ${JSON.stringify(playwrightNativeTextCoverage)}`);
 
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: APP_ORIGIN });
+    await page.evaluate(() => navigator.clipboard.writeText('ñ'));
+    const beforeNativePaste = await page.evaluate(() => ({
+      inputEventsForwarded: window.netsurfFramebufferState.inputEventsForwarded,
+      dirtyRectsObserved: window.netsurfFramebufferState.dirtyRectsObserved,
+      address: (() => {
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const data = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        return { black, nonGrey, nonWhite, hash };
+      })(),
+    }));
+    await page.keyboard.press('Control+V');
+    const nativeClipboardPasteCoverage = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.inputEventsForwarded < before.inputEventsForwarded + 2 || state.dirtyRectsObserved <= before.dirtyRectsObserved) return null;
+        const pasteCommit = state.compositionCommit;
+        if (pasteCommit?.text !== 'ñ' || pasteCommit.source !== 'beforeinput') return null;
+        const history = state.inputEventHistory.slice(-10).map(({ type, detail }) => ({ type, detail }));
+        const pasteEvent = history.find((event) => event.type === 'beforeinput' && event.detail?.text === 'ñ' && event.detail?.inputType === 'insertFromPaste');
+        if (!pasteEvent) return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const data = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const address = { black, nonGrey, nonWhite, hash };
+        const addressChanged = Object.entries(before.address).some(([key, value]) => address[key] !== value);
+        if (!addressChanged) return null;
+        return {
+          before,
+          after: state.inputEventsForwarded,
+          dirtyAfter: state.dirtyRectsObserved,
+          compositionCommit: pasteCommit,
+          lastInputEvent: state.lastInputEvent,
+          history,
+          pasteEvent,
+          address,
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+          activeElementId: document.activeElement?.id,
+        };
+      },
+      beforeNativePaste,
+    ).then((handle) => handle.jsonValue());
+    assert.equal(nativeClipboardPasteCoverage.activeElementId, 'netsurf-text-input');
+    assert.ok(nativeClipboardPasteCoverage.after >= beforeNativePaste.inputEventsForwarded + 2, `expected native browser clipboard paste to forward pasted Latin-1 key events without leaking the host paste shortcut into NetSurf, got ${JSON.stringify(nativeClipboardPasteCoverage)}`);
+    assert.ok(nativeClipboardPasteCoverage.dirtyAfter > beforeNativePaste.dirtyRectsObserved, `expected native browser clipboard paste to preserve dirty-rect advancement, got ${JSON.stringify(nativeClipboardPasteCoverage)}`);
+    assert.deepEqual(
+      nativeClipboardPasteCoverage.address,
+      { black: 1755, nonGrey: 12610, nonWhite: 4919, hash: 2647394567 },
+      `expected native browser clipboard paste to visibly add a deterministic address-bar glyph, got ${JSON.stringify(nativeClipboardPasteCoverage)}`,
+    );
+    assert.deepEqual(
+      nativeClipboardPasteCoverage.pasteEvent.detail,
+      { text: 'ñ', inputType: 'insertFromPaste', isComposing: false, trusted: true, compositionActive: false, forwardedCharacters: 1, duplicateCompositionCommit: false },
+      `expected trusted native clipboard paste beforeinput metadata, got ${JSON.stringify(nativeClipboardPasteCoverage)}`,
+    );
+    assert.deepEqual(
+      nativeClipboardPasteCoverage.compositionCommit,
+      { text: 'ñ', source: 'beforeinput', forwardedCharacters: 1, duplicateBeforeinputSuppressed: false, at: nativeClipboardPasteCoverage.compositionCommit.at, trusted: true },
+      `expected native clipboard paste to update commit guard metadata, got ${JSON.stringify(nativeClipboardPasteCoverage)}`,
+    );
+    assert.ok(Number.isFinite(nativeClipboardPasteCoverage.compositionCommit.at), `expected native clipboard paste timestamp, got ${JSON.stringify(nativeClipboardPasteCoverage)}`);
+    assert.ok(
+      !nativeClipboardPasteCoverage.history.some((event) => event.detail?.code === 'ControlLeft' || event.detail?.code === 'MetaLeft'),
+      `expected host paste shortcut modifiers to be left to the browser instead of forwarded to NetSurf, got ${JSON.stringify(nativeClipboardPasteCoverage)}`,
+    );
+    const nativePasteByTypeAndCode = new Map(
+      nativeClipboardPasteCoverage.history
+        .filter((event) => event.detail && Number.isFinite(event.detail.nsfb))
+        .map((event) => [`${event.type}:${event.detail.nsfb}`, event.detail]),
+    );
+    assert.equal(nativePasteByTypeAndCode.get('beforeinput-keydown:241')?.char, 'ñ', `expected native clipboard paste keydown mapping, got ${JSON.stringify(nativeClipboardPasteCoverage)}`);
+    assert.equal(nativePasteByTypeAndCode.get('beforeinput-keyup:241')?.source, 'beforeinput', `expected native clipboard paste keyup mapping, got ${JSON.stringify(nativeClipboardPasteCoverage)}`);
+
     const beforeToolbarInputCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsForwarded);
     await clickNetSurfCanvasPixel(canvasLocator, 75, 15);
     const toolbarActivation = await page.waitForFunction(

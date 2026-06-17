@@ -352,6 +352,13 @@
         const focusTextInputProxy = () => {
           textInputProxy.focus({ preventScroll: true });
         };
+        const shouldLetBrowserHandleTextShortcut = (target, event) => target === textInputProxy
+          && !event.altKey
+          && (
+            ((event.ctrlKey || event.metaKey) && event.key?.toLowerCase() === 'v')
+            || (event.key === 'Control' && event.code === 'ControlLeft')
+            || (event.key === 'Meta' && event.code === 'MetaLeft')
+          );
         const keyboardTargets = [canvas, textInputProxy];
 
         canvas.addEventListener('focus', focusTextInputProxy);
@@ -386,12 +393,14 @@
         }, { passive: false });
         for (const target of keyboardTargets) {
           target.addEventListener('keydown', (event) => {
+            if (shouldLetBrowserHandleTextShortcut(target, event)) return;
             const code = keyCodeFromEvent(event);
             if (!code) return;
             event.preventDefault();
             forwarded(pushKey(1, code), 'keydown', keyEventDetail(event, code));
           });
           target.addEventListener('keyup', (event) => {
+            if (shouldLetBrowserHandleTextShortcut(target, event)) return;
             const code = keyCodeFromEvent(event);
             if (!code) return;
             event.preventDefault();
