@@ -97,6 +97,10 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
 - `@livecd` — SliTaz live-boots to its graphical Openbox desktop (Midori/WebKit)
 - `@slow` — Android 4.4 boots to the launcher (~4-5 min; streams ~250 MB)
 - `@network` — boots Linux, DHCP, and `wget`s a live page over Wisp
+- `@browse` — a **real browser engine renders a live page over Wisp**: boots
+  Linux with a static `links` text browser overlaid via an initrd, then
+  `links -dump`s example.com over both HTTP and HTTPS and asserts on the
+  *rendered* (tag-free) text
 - `@ux` — the loading progress bar and the Wisp relay picker (offline/deterministic)
 - `@touch` — mobile/touch input: tap = click, long-press = right-click, drag =
   move, and the on-screen keyboard forwards keys (boots KolibriOS, asserts on the

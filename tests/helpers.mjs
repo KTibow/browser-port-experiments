@@ -45,16 +45,22 @@ export async function bootAndWaitForScreen(page, osId, {
 
 // Boot a guest with a serial console and drive it. Used for the rigorous
 // end-to-end networking test. Drives a Buildroot Linux (busybox).
-export async function startSerialVM(page, { nic = "ne2k", relayUrl = "wisps://anura.pro/", memoryMb = 128 } = {}) {
+//
+// `initrd` (optional): a same-origin path to an external initramfs (cpio.gz).
+// The buildroot kernel extracts it ON TOP of its built-in initramfs, so the
+// file overlays new files into the running rootfs. We use this to drop a static
+// `links` text browser (mirror/links-initrd.cpio.gz) into the guest, proving a
+// real browser engine renders a live page over Wisp (see browse.spec.mjs).
+export async function startSerialVM(page, { nic = "ne2k", relayUrl = "wisps://anura.pro/", memoryMb = 128, initrd = null } = {}) {
   // Use the runner page (has the no-referrer policy + libv86 module) but with an
   // unknown os id so it does not start its own emulator.
   await page.goto(`/run.html?os=__test_harness__`, { waitUntil: "domcontentloaded" });
-  await page.evaluate(async ({ nic, relayUrl, memoryMb }) => {
+  await page.evaluate(async ({ nic, relayUrl, memoryMb, initrd }) => {
     const { V86 } = await import("./vendor/libv86.mjs");
     window.__serial = "";
     window.__send = 0;
     window.__recv = 0;
-    const emu = new V86({
+    const opts = {
       wasm_path: "vendor/v86.wasm",
       bios: { url: "vendor/bios/seabios.bin" },
       vga_bios: { url: "vendor/bios/vgabios.bin" },
@@ -67,7 +73,9 @@ export async function startSerialVM(page, { nic = "ne2k", relayUrl = "wisps://an
       cmdline: "console=ttyS0 tsc=reliable mitigations=off random.trust_cpu=on",
       filesystem: {},
       disable_speaker: true,
-    });
+    };
+    if (initrd) opts.initrd = { url: new URL(initrd, location.href).href, async: false };
+    const emu = new V86(opts);
     window.__emu = emu;
     emu.add_listener("serial0-output-byte", (b) => {
       window.__serial += String.fromCharCode(b);
@@ -75,7 +83,7 @@ export async function startSerialVM(page, { nic = "ne2k", relayUrl = "wisps://an
     });
     emu.add_listener("net0-send", () => { window.__send++; });
     emu.add_listener("net0-receive", () => { window.__recv++; });
-  }, { nic, relayUrl, memoryMb });
+  }, { nic, relayUrl, memoryMb, initrd });
 }
 
 export const getSerial = (page) => page.evaluate(() => window.__serial || "");
