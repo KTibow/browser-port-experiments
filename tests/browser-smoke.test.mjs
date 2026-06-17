@@ -1471,6 +1471,33 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
   }
 });
 
+async function revealNetSurfWelcomeSearchForm(page, canvasLocator) {
+  const beforeSearchScrollDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+  await hoverNetSurfCanvasPixel(canvasLocator, 320, 240);
+  await page.mouse.wheel(0, 120);
+  await page.mouse.wheel(0, 120);
+  const searchFormRevealed = await waitForNetSurfRegionMetrics(
+    page,
+    {
+      searchPanel: {
+        region: { x: 65, y: 175, width: 505, height: 140 },
+        metrics: { black: 524, nonGrey: 70700, nonWhite: 38390, hash: 3508617674 },
+      },
+      searchInput: {
+        region: { x: 105, y: 188, width: 405, height: 30 },
+        metrics: { black: 0, nonGrey: 12150, nonWhite: 2200, hash: 2983707424 },
+      },
+      searchButton: {
+        region: { x: 260, y: 222, width: 110, height: 35 },
+        metrics: { black: 396, nonGrey: 3850, nonWhite: 3850, hash: 569062084 },
+      },
+    },
+    beforeSearchScrollDirtyRects,
+  );
+  assert.ok(searchFormRevealed.dirtyRectsObserved > beforeSearchScrollDirtyRects, `expected wheel scrolling to reveal the about:welcome search form with dirty-rect advancement, got ${JSON.stringify(searchFormRevealed)}`);
+  return searchFormRevealed;
+}
+
 test('NetSurf about:welcome search form exposes deterministic focus, typing, and submit rasters', { timeout: 25_000 }, async () => {
   const page = await newAppPage();
   try {
@@ -1480,29 +1507,7 @@ test('NetSurf about:welcome search form exposes deterministic focus, typing, and
     await waitForNetSurfVisibleTextSignatures(page);
 
     const canvasLocator = page.locator('#viewport');
-    const beforeSearchScrollDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
-    await hoverNetSurfCanvasPixel(canvasLocator, 320, 240);
-    await page.mouse.wheel(0, 120);
-    await page.mouse.wheel(0, 120);
-    const searchFormRevealed = await waitForNetSurfRegionMetrics(
-      page,
-      {
-        searchPanel: {
-          region: { x: 65, y: 175, width: 505, height: 140 },
-          metrics: { black: 524, nonGrey: 70700, nonWhite: 38390, hash: 3508617674 },
-        },
-        searchInput: {
-          region: { x: 105, y: 188, width: 405, height: 30 },
-          metrics: { black: 0, nonGrey: 12150, nonWhite: 2200, hash: 2983707424 },
-        },
-        searchButton: {
-          region: { x: 260, y: 222, width: 110, height: 35 },
-          metrics: { black: 396, nonGrey: 3850, nonWhite: 3850, hash: 569062084 },
-        },
-      },
-      beforeSearchScrollDirtyRects,
-    );
-    assert.ok(searchFormRevealed.dirtyRectsObserved > beforeSearchScrollDirtyRects, `expected wheel scrolling to reveal the about:welcome search form with dirty-rect advancement, got ${JSON.stringify(searchFormRevealed)}`);
+    const searchFormRevealed = await revealNetSurfWelcomeSearchForm(page, canvasLocator);
 
     const beforeInputHoverDirtyRects = searchFormRevealed.dirtyRectsObserved;
     await hoverNetSurfCanvasPixel(canvasLocator, 120, 200);
@@ -1633,6 +1638,85 @@ test('NetSurf about:welcome search form exposes deterministic focus, typing, and
       searchSubmit.metrics.address,
       { black: 1424, nonGrey: 12610, nonWhite: 4570, hash: 1780460690 },
       `expected search form submit to visibly update the toolbar address raster without hard-coded networking, got ${JSON.stringify(searchSubmit)}`,
+    );
+  } finally {
+    await closePage(page);
+  }
+});
+
+test('NetSurf about:welcome search form also submits via Enter with deterministic rasters', { timeout: 25_000 }, async () => {
+  const page = await newAppPage();
+  try {
+    await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
+    await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
+    await page.locator('#viewport').waitFor({ state: 'visible' });
+    await waitForNetSurfVisibleTextSignatures(page);
+
+    const canvasLocator = page.locator('#viewport');
+    const searchFormRevealed = await revealNetSurfWelcomeSearchForm(page, canvasLocator);
+
+    const beforeSearchInputFocusCount = searchFormRevealed.inputEventsForwarded;
+    await clickNetSurfCanvasPixel(canvasLocator, 200, 202);
+    const searchInputFocus = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        searchInput: {
+          region: { x: 105, y: 188, width: 405, height: 30 },
+          metrics: { black: 0, nonGrey: 12150, nonWhite: 2219, hash: 2219368695 },
+        },
+      },
+      searchFormRevealed.dirtyRectsObserved,
+    );
+    assert.equal(searchInputFocus.lastInputEvent.type, 'pointerup-button');
+    assert.ok(searchInputFocus.inputEventsForwarded >= beforeSearchInputFocusCount + 3, `expected Enter-submit search input focus click forwarding, got ${JSON.stringify(searchInputFocus)}`);
+
+    const beforeSearchTypingCount = searchInputFocus.inputEventsForwarded;
+    await page.keyboard.type('net');
+    const searchTypedText = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        searchInput: {
+          region: { x: 105, y: 188, width: 405, height: 30 },
+          metrics: { black: 117, nonGrey: 12150, nonWhite: 2337, hash: 1988530126 },
+        },
+      },
+      searchInputFocus.dirtyRectsObserved,
+    );
+    assert.equal(searchTypedText.lastInputEvent.type, 'keyup');
+    assert.equal(searchTypedText.lastInputEvent.detail.key, 't');
+    assert.ok(searchTypedText.inputEventsForwarded >= beforeSearchTypingCount + 6, `expected Enter-submit search typing to forward keydown/keyup events, got ${JSON.stringify(searchTypedText)}`);
+
+    await page.keyboard.press('Enter');
+    const searchSubmitByEnter = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 382, nonGrey: 1686, nonWhite: 11160, hash: 2143802459 },
+        },
+        address: {
+          region: { x: 95, y: 3, width: 520, height: 28 },
+          metrics: { black: 1424, nonGrey: 12610, nonWhite: 4570, hash: 1780460690 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 1278, nonGrey: 267668, nonWhite: 272453, hash: 1306608447 },
+        },
+      },
+      searchTypedText.dirtyRectsObserved,
+    );
+    assert.equal(searchSubmitByEnter.lastInputEvent.type, 'keyup');
+    assert.equal(searchSubmitByEnter.lastInputEvent.detail.key, 'Enter');
+    assert.equal(searchSubmitByEnter.lastInputEvent.detail.nsfb, 13);
+    assert.equal(searchSubmitByEnter.inputEventsDropped, 0, `expected no dropped input events through Enter search submit, got ${JSON.stringify(searchSubmitByEnter)}`);
+    assert.deepEqual(
+      searchSubmitByEnter.metrics,
+      {
+        status: { black: 382, nonGrey: 1686, nonWhite: 11160, hash: 2143802459 },
+        address: { black: 1424, nonGrey: 12610, nonWhite: 4570, hash: 1780460690 },
+        content: { black: 1278, nonGrey: 267668, nonWhite: 272453, hash: 1306608447 },
+      },
+      `expected Enter search submit to match deterministic offline status/address/content rasters without hard-coded networking, got ${JSON.stringify(searchSubmitByEnter)}`,
     );
   } finally {
     await closePage(page);
