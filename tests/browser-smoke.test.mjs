@@ -2248,7 +2248,30 @@ test('NetSurf about:welcome top navigation links expose distinct hover targets a
     await waitForNetSurfVisibleTextSignatures(page);
 
     const canvasLocator = page.locator('#viewport');
-    const beforeDocsHoverDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+    const beforeHomeHoverDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+    await hoverNetSurfCanvasPixel(canvasLocator, 80, 138);
+    const homeHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 1050, nonGrey: 2354, nonWhite: 11160, hash: 1087292401 },
+        },
+        topNavigation: {
+          region: { x: 0, y: 120, width: 640, height: 42 },
+          metrics: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+        },
+      },
+      beforeHomeHoverDirtyRects,
+    );
+    assert.equal(homeHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(homeHover.cursor.hotspot, [4, 0], `expected about:welcome home link hover to expose NetSurf's hand cursor, got ${JSON.stringify(homeHover)}`);
+    assert.deepEqual(
+      homeHover.metrics.status,
+      { black: 1050, nonGrey: 2354, nonWhite: 11160, hash: 1087292401 },
+      `expected top navigation home hover to rasterize a deterministic status-bar URL, got ${JSON.stringify(homeHover)}`,
+    );
+
     await hoverNetSurfCanvasPixel(canvasLocator, 320, 138);
     const docsHover = await waitForNetSurfRegionMetrics(
       page,
@@ -2262,11 +2285,12 @@ test('NetSurf about:welcome top navigation links expose distinct hover targets a
           metrics: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
         },
       },
-      beforeDocsHoverDirtyRects,
+      homeHover.dirtyRectsObserved,
     );
     assert.equal(docsHover.lastInputEvent.type, 'pointermove');
     assert.deepEqual(docsHover.cursor.hotspot, [4, 0], `expected about:welcome documentation link hover to expose NetSurf's hand cursor, got ${JSON.stringify(docsHover)}`);
     assert.equal(docsHover.cursor.rect[2] - docsHover.cursor.rect[0], 16, `expected top navigation documentation hand cursor width, got ${JSON.stringify(docsHover)}`);
+    assert.notEqual(docsHover.metrics.status.hash, homeHover.metrics.status.hash, `expected home and documentation top navigation links to expose distinct status-bar URLs, got ${JSON.stringify({ homeHover, docsHover })}`);
     assert.deepEqual(
       docsHover.metrics.status,
       { black: 1436, nonGrey: 2740, nonWhite: 11160, hash: 3529665267 },
@@ -2297,7 +2321,61 @@ test('NetSurf about:welcome top navigation links expose distinct hover targets a
       `expected top navigation hover to preserve the visible nslinks raster band, got ${JSON.stringify(downloadsHover)}`,
     );
 
-    const beforeDownloadsActivationCount = downloadsHover.inputEventsForwarded;
+    const beforeHomeActivationCount = downloadsHover.inputEventsForwarded;
+    await clickNetSurfCanvasPixel(canvasLocator, 80, 138);
+    const homeActivation = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+        },
+        address: {
+          region: { x: 95, y: 3, width: 520, height: 28 },
+          metrics: { black: 1503, nonGrey: 12610, nonWhite: 4649, hash: 1458272501 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 1808, nonGrey: 268532, nonWhite: 135133, hash: 4161839195 },
+        },
+        topNavigation: {
+          region: { x: 0, y: 120, width: 640, height: 42 },
+          metrics: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+        },
+      },
+      downloadsHover.dirtyRectsObserved,
+    );
+    assert.equal(homeActivation.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(homeActivation.lastInputEvent.detail, { button: 0 });
+    assert.ok(homeActivation.inputEventsForwarded >= beforeHomeActivationCount + 3, `expected top navigation home activation click forwarding, got ${JSON.stringify(homeActivation)}`);
+    assert.equal(homeActivation.inputEventsDropped, 0, `expected no dropped input events through top navigation home activation, got ${JSON.stringify(homeActivation)}`);
+    assert.deepEqual(
+      homeActivation.metrics,
+      {
+        status: { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+        address: { black: 1503, nonGrey: 12610, nonWhite: 4649, hash: 1458272501 },
+        content: { black: 1808, nonGrey: 268532, nonWhite: 135133, hash: 4161839195 },
+        topNavigation: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+      },
+      `expected top navigation home activation to visibly redraw offline status while preserving address/content/nav rasters, got ${JSON.stringify(homeActivation)}`,
+    );
+
+    const beforeDownloadsActivationCount = homeActivation.inputEventsForwarded;
+    await hoverNetSurfCanvasPixel(canvasLocator, 540, 138);
+    const downloadsRehover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 1331, nonGrey: 2635, nonWhite: 11160, hash: 782674110 },
+        },
+        topNavigation: {
+          region: { x: 0, y: 120, width: 640, height: 42 },
+          metrics: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+        },
+      },
+      homeActivation.dirtyRectsObserved,
+    );
     await clickNetSurfCanvasPixel(canvasLocator, 540, 138);
     const downloadsActivation = await waitForNetSurfRegionMetrics(
       page,
@@ -2319,7 +2397,7 @@ test('NetSurf about:welcome top navigation links expose distinct hover targets a
           metrics: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
         },
       },
-      downloadsHover.dirtyRectsObserved,
+      downloadsRehover.dirtyRectsObserved,
     );
     assert.equal(downloadsActivation.lastInputEvent.type, 'pointerup-button');
     assert.deepEqual(downloadsActivation.lastInputEvent.detail, { button: 0 });
