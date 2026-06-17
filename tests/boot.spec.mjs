@@ -2,8 +2,11 @@ import { test, expect } from "@playwright/test";
 import { bootAndWaitForScreen } from "./helpers.mjs";
 
 // KolibriOS is tiny and boots to a graphical desktop in seconds. This proves
-// the whole stack (WASM CPU + on-demand image streaming + canvas rendering).
-test("@smoke KolibriOS boots to a graphical desktop", async ({ page }) => {
+// the whole stack (WASM CPU + image load + canvas rendering). It also gates the
+// deploy. Resilience: kolibri.img is SELF-HOSTED (dist/mirror/), so this gate
+// does NOT depend on copy.sh being up — a copy.sh outage can no longer block a
+// deploy or break the flagship demo. We assert the self-hosted source was used.
+test("@smoke KolibriOS boots to a graphical desktop (self-hosted)", async ({ page }) => {
   const info = await bootAndWaitForScreen(page, "kolibrios", {
     timeoutMs: 90_000,
     minWidth: 800,
@@ -12,6 +15,27 @@ test("@smoke KolibriOS boots to a graphical desktop", async ({ page }) => {
   expect(info.width).toBeGreaterThanOrEqual(800);
   expect(info.colors).toBeGreaterThanOrEqual(25);
   await expect(page.locator("#status")).toHaveText("Running");
+  // Prove the boot used our own origin's mirror, not copy.sh.
+  expect(await page.evaluate(() => window.__usedMirror)).toBe(true);
+});
+
+// Regression guard for copy.sh streaming (the source for every image we cannot
+// self-host). Forcing ?cdn= bypasses the mirror and streams kolibri.img from
+// copy.sh with the no-Referer hotlink workaround. NOT in @smoke: a copy.sh
+// outage should not block deploys (that's the whole point of the mirror); this
+// runs in the full / scheduled verify suite instead.
+test("KolibriOS still boots streaming from copy.sh @cdn", async ({ page }) => {
+  const info = await bootAndWaitForScreen(page, "kolibrios", {
+    timeoutMs: 120_000,
+    minWidth: 800,
+    minColors: 25,
+    query: "&cdn=https://i.copy.sh/",
+  });
+  expect(info.width).toBeGreaterThanOrEqual(800);
+  expect(info.colors).toBeGreaterThanOrEqual(25);
+  await expect(page.locator("#status")).toHaveText("Running");
+  // With ?cdn= forced, the mirror must be bypassed.
+  expect(await page.evaluate(() => window.__usedMirror)).toBe(false);
 });
 
 // State-image OSes resume a booted desktop. These prove real, feature-complete

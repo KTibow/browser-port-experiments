@@ -68,7 +68,7 @@ the badge on the landing page.
 
 | id | browser/engine | status | notes |
 | --- | --- | --- | --- |
-| kolibrios | WebView (+ NetSurf) | ✅ boots | 1024×768 desktop in ~10s; Wisp connects; CI `@smoke` |
+| kolibrios | WebView (+ NetSurf) | ✅ boots | 1024×768 desktop in ~10s; Wisp connects; **self-hosted (`mirror/kolibri.img`, copy.sh-independent)**; CI `@smoke` |
 | windows95 | Internet Explorer (Trident) | ✅ boots | restores from state in ~2s; CI `@state`; classic teal desktop + IE icon verified; ne2k |
 | windows98 | Internet Explorer (Trident) | ✅ boots | restores from state; CI `@state`; needs `networking.bat` |
 | windows2000 | IE5 + K-Meleon + Lynx + Retrozilla | ✅ boots | restores from state; CI `@state`; 4 browsers! run `networking.bat` |
@@ -106,9 +106,15 @@ When you start a task, append a line to the Log with your run id and "claimed".
    extension fetched), 9front (mothra), FreeBSD (console — needs `links`/X), Redox
    (state image; check for a browser), Windows 95 (IE). Windows XP is **not** on the
    copy.sh CDN. Keep images CDN-streamable; don't commit big blobs.
-5. **Resilience.** Mirror the *small* critical images (kolibri.img, buildroot) into
-   the repo or a GitHub Release as a fallback `?cdn=` source, so a copy.sh outage
-   doesn't take the whole site down. Verify CORS + range support on the mirror.
+5. ~~**Resilience.**~~ **DONE** (2026-06-17). The two *small* critical images are
+   now self-hosted in the repo `mirror/` (built into `dist/mirror/`, served
+   same-origin by Pages with range support): `kolibri.img` (1.44 MB — the flagship
+   + the `@smoke` deploy gate) and `buildroot-bzimage.bin` (5 MB — the `@network`
+   Wisp proof). An image's `mirror` field makes the runner prefer the same-origin
+   copy unless `?cdn=` forces a host. Result: a copy.sh outage can no longer block
+   deploys or break the flagship/`@network`. `?cdn=https://i.copy.sh/` still streams
+   from copy.sh (covered by the new `@cdn` regression test). Larger images (the
+   Windows/Haiku/etc. multi-hundred-MB disks) stay copy.sh-only — too big to host.
 6. **Polish UX.** Per-OS "how to browse" hints on the runner page (e.g. Win98:
    double-click `networking.bat`, then Internet Explorer). Loading progress bar.
    Mobile/touch input. A relay picker (anura.pro default + alternatives).
@@ -138,6 +144,45 @@ single relay going unless there's clearly parallelizable, conflict-free work.
 
 ## Log
 
+- 2026-06-17 — **worker (run: resilience)**: **Completed Task 5.** Self-hosted the
+  two small critical images and made the flagship + deploy gate + Wisp proof
+  copy.sh-independent. Verified end-to-end (not just compiled):
+  • `@smoke` (the **deploy gate**) now boots KolibriOS from `mirror/kolibri.img`
+    — 3/3 green; the test asserts `window.__usedMirror === true`, and I **read the
+    screenshot**: real 1024×768 KolibriOS desktop (NETSURF globe + WebView + app
+    icons), "Wisp: connected", 0 page errors. A copy.sh outage can no longer
+    block a deploy or break the highlighted demo.
+  • `@network` now boots the **mirrored** `buildroot-bzimage.bin` and still does
+    the real DHCP + `wget http://example.com` over Wisp — green, and **faster**
+    (~5.5s vs streaming) since the kernel is local.
+  • New `@cdn` test forces `?cdn=https://i.copy.sh/`, boots kolibri straight from
+    copy.sh (mirror bypassed, `__usedMirror === false`) — green; this keeps a
+    hotlink/URL regression guard for copy.sh **without** gating deploys on it.
+  • `windows95 @state` still green (2.4s) — confirms the CDN path for the
+    big state images is unchanged (only images with a `mirror` field switch).
+  Mechanism: per-image `mirror` field in `browsers.json`; `resolveImage(host,img,
+  preferMirror)` prefers the same-origin mirror unless `?cdn=` is set; `build.mjs`
+  copies `mirror/` → `dist/mirror/`; the runner shows "Loading (self-hosted)…".
+  Verified the mirror serves Range (206 + Content-Range) locally; on Pages it's
+  same-origin so no CORS needed. **Gotchas:** (1) both mirrored files are
+  byte-identical to copy.sh (sha256 + boot-sector/bzImage-magic checked) — see
+  `mirror/README.md` for refresh instructions and sizes. (2) Don't run
+  `pkill -f serve.mjs` inside a command whose own text contains "serve.mjs" — it
+  matches and kills its own shell (silent no-op). Next: Task 3 (per-OS "loads a
+  page", still mouse-blocked) or Task 6 (UX polish) or more browsers (Task 4).
+- 2026-06-17 — **worker (run: resilience)**: claimed **Task 5** (resilience —
+  mirror the small critical images so a copy.sh outage can't take the site/gate
+  down). Rationale over queue-top Task 3: the deploy gate (`@smoke`) currently
+  boots KolibriOS *from copy.sh*, so a copy.sh outage **blocks deploys** AND breaks
+  the flagship live — a real single point of failure that's high-value + low-risk
+  to fix; Task 3's GUI automation is still blocked by the relative-mouse gotcha.
+  Verified `kolibri.img` (1474560 B, valid KOLIBRI boot sector) and
+  `buildroot-bzimage.bin` (5166352 B, real Linux 5.6.15 bzImage) download from
+  copy.sh with no Referer (200 + ACAO:* + Accept-Ranges). Self-hosting both in the
+  repo `mirror/` (served same-origin by Pages/serve.mjs), wiring a per-image
+  `mirror` field so the flagship + the `@smoke` gate + the `@network` proof no
+  longer depend on copy.sh; adding a `@cdn` test that still boots kolibri from
+  copy.sh to catch hotlink regressions.
 - 2026-06-17 — **orchestrator (run #1)**: Scaffolded everything. Chose & proved the
   v86 + i.copy.sh + Wisp(anura.pro) architecture. Built site (registry-driven
   index + runner), vendored v86 + BIOS, deploy + verify workflows, Playwright

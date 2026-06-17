@@ -7,8 +7,9 @@ export async function bootAndWaitForScreen(page, osId, {
   timeoutMs = 180_000,
   minColors = 8,
   minWidth = 320,
+  query = "", // extra query string, e.g. "&cdn=https://i.copy.sh/"
 } = {}) {
-  await page.goto(`/run.html?os=${encodeURIComponent(osId)}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/run.html?os=${encodeURIComponent(osId)}${query}`, { waitUntil: "domcontentloaded" });
 
   const start = Date.now();
   let info = null;
@@ -60,7 +61,9 @@ export async function startSerialVM(page, { nic = "ne2k", relayUrl = "wisps://an
       autostart: true,
       memory_size: memoryMb * 1024 * 1024,
       net_device: { type: nic, relay_url: relayUrl },
-      bzimage: { url: "https://i.copy.sh/buildroot-bzimage.bin", size: 5166352, async: false },
+      // Resilience: boot from our self-hosted mirror (same-origin, copy.sh-
+      // independent). Falls back to copy.sh only if the mirror is absent.
+      bzimage: { url: new URL("mirror/buildroot-bzimage.bin", location.href).href, size: 5166352, async: false },
       cmdline: "console=ttyS0 tsc=reliable mitigations=off random.trust_cpu=on",
       filesystem: {},
       disable_speaker: true,

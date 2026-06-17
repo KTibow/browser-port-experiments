@@ -56,6 +56,14 @@ async function main() {
   // 4. Copy vendored BIOS files.
   await copyDir(path.join(root, "vendor", "bios"), path.join(vendorDir, "bios"));
 
+  // 4b. Copy the self-hosted image mirror (resilience: small critical images are
+  // served from our own origin so a copy.sh outage can't break the flagship,
+  // the @smoke deploy gate, or the @network proof). See mirror/README.md.
+  const mirrorSrc = path.join(root, "mirror");
+  if (await exists(mirrorSrc)) {
+    await copyDir(mirrorSrc, path.join(dist, "mirror"));
+  }
+
   // 5. Generate index.html from the template + registry.
   const registry = JSON.parse(await fs.readFile(path.join(root, "browsers.json"), "utf8"));
   const template = await fs.readFile(path.join(root, "src", "index.html"), "utf8");
@@ -68,7 +76,10 @@ async function main() {
 
   // Report.
   const count = registry.browsers.length;
-  console.log(`Built dist/ with ${count} browser(s).`);
+  const mirrored = (await exists(path.join(dist, "mirror")))
+    ? (await fs.readdir(path.join(dist, "mirror"))).filter((f) => f !== "README.md")
+    : [];
+  console.log(`Built dist/ with ${count} browser(s); mirror: ${mirrored.join(", ") || "(none)"}.`);
 }
 
 function esc(s) {

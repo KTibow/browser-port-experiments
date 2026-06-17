@@ -33,8 +33,11 @@ run their *native* browsers — so we get real, feature-complete engines:
 - **Damn Small Linux** → Dillo + Firefox
 
 OS images are streamed on demand from copy.sh's CDN (`i.copy.sh`, the same host
-that powers the real v86 demo). See `PLAN.md` for the architecture decisions,
-verification status, and the task queue for ongoing work.
+that powers the real v86 demo). For resilience, the two *small, critical* images
+are also **self-hosted** in this repo under `mirror/` (the flagship KolibriOS
+floppy and the Buildroot kernel used by the networking test), so a copy.sh outage
+can't block deploys or break the flagship. See `PLAN.md` for the architecture
+decisions, verification status, and the task queue for ongoing work.
 
 ## How it works
 
@@ -75,7 +78,9 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
 
 ## Tests
 
-- `@smoke` — landing page + KolibriOS graphical boot (no flaky deps; gates deploy)
+- `@smoke` — landing page + KolibriOS graphical boot from the **self-hosted**
+  mirror (no third-party deps; gates deploy)
+- `@cdn` — KolibriOS still boots streaming from copy.sh (hotlink regression guard)
 - `@state` — saved-state OSes resume a booted desktop (Win98/2000/ME, Haiku,
   ReactOS, SerenityOS, 9front)
 - `@cdrom` — Damn Small Linux boots its live CD into the X11 desktop

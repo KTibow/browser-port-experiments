@@ -1,5 +1,5 @@
 {
-  "$comment": "Registry of browsers/OSes ported to the web via v86 (WASM CPU + canvas + Wisp networking). Image URLs are relative to the CDN host (default https://i.copy.sh/, overridable with ?cdn=). The `config` object mirrors v86 constructor options; the runner prepends the CDN host to every disk/state `url`.",
+  "$comment": "Registry of browsers/OSes ported to the web via v86 (WASM CPU + canvas + Wisp networking). Image URLs are relative to the CDN host (default https://i.copy.sh/, overridable with ?cdn=). The `config` object mirrors v86 constructor options; the runner prepends the CDN host to every disk/state `url`. An image may also carry a `mirror` path (resilience: a same-origin copy under dist/mirror/); the runner prefers it unless a `?cdn=` is forced.",
   "cdn": "https://i.copy.sh/",
   "relay": "wisps://anura.pro/",
   "browsers": [
@@ -13,7 +13,7 @@
       "highlight": true,
       "tested": "boots",
       "config": {
-        "fda": { "url": "kolibri.img", "size": 1474560 },
+        "fda": { "url": "kolibri.img", "size": 1474560, "mirror": "mirror/kolibri.img" },
         "memory_size": 134217728,
         "net_device_type": "ne2k"
       }

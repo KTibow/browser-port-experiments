@@ -25,10 +25,20 @@ function fatal(msg) {
 }
 
 // Prepend the CDN host to a disk descriptor's url (unless it is already absolute).
-function resolveImage(host, img) {
-  if (!img || !img.url) return img;
+// Resilience: an image may carry a same-origin `mirror` path (we self-host the
+// small critical images so a copy.sh outage can't break the flagship, the
+// @smoke deploy gate, or the @network proof). We prefer the mirror unless the
+// visitor forced a source with `?cdn=` (e.g. ?cdn=https://i.copy.sh/).
+function resolveImage(host, img, preferMirror) {
+  if (!img) return img;
   const out = { ...img };
-  if (!/^(https?:)?\/\//.test(out.url)) out.url = host + out.url;
+  const useMirror = preferMirror && out.mirror;
+  if (useMirror) {
+    out.url = new URL(out.mirror, location.href).href; // same-origin absolute URL
+  } else if (out.url && !/^(https?:)?\/\//.test(out.url)) {
+    out.url = host + out.url;
+  }
+  delete out.mirror;
   return out;
 }
 
@@ -57,7 +67,10 @@ async function main() {
     hintEl.onclick = () => { hintEl.hidden = true; };
   }
 
-  const host = qs.get("cdn") || registry.cdn || "https://i.copy.sh/";
+  const cdnOverride = qs.get("cdn");
+  const host = cdnOverride || registry.cdn || "https://i.copy.sh/";
+  // Prefer our self-hosted mirror unless the visitor explicitly forced a CDN.
+  const preferMirror = cdnOverride == null;
   const relayUrl = qs.get("relay_url") || registry.relay || "wisps://anura.pro/";
   const cfg = entry.config || {};
 
@@ -88,10 +101,18 @@ async function main() {
   ];
   for (const k of passthrough) if (k in cfg) opts[k] = cfg[k];
 
+  let usedMirror = false;
   for (const k of ["fda", "fdb", "hda", "hdb", "cdrom", "bzimage", "initrd", "multiboot"]) {
-    if (cfg[k]) opts[k] = resolveImage(host, cfg[k]);
+    if (cfg[k]) {
+      if (preferMirror && cfg[k].mirror) usedMirror = true;
+      opts[k] = resolveImage(host, cfg[k], preferMirror);
+    }
   }
-  if (cfg.state) opts.initial_state = resolveImage(host, cfg.state);
+  if (cfg.state) {
+    if (preferMirror && cfg.state.mirror) usedMirror = true;
+    opts.initial_state = resolveImage(host, cfg.state, preferMirror);
+  }
+  window.__usedMirror = usedMirror; // exposed for resilience tests
   if (cfg.filesystem) {
     opts.filesystem = { ...cfg.filesystem };
     if (cfg.filesystem.baseurl && !/^(https?:)?\/\//.test(cfg.filesystem.baseurl)) {
@@ -104,7 +125,10 @@ async function main() {
     opts.filesystem = {};
   }
 
-  setStatus(cfg.state ? "Streaming saved state\u2026" : "Loading\u2026", "busy");
+  setStatus(
+    usedMirror ? "Loading (self-hosted)\u2026" : cfg.state ? "Streaming saved state\u2026" : "Loading\u2026",
+    "busy"
+  );
 
   let emulator;
   try {
