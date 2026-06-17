@@ -697,6 +697,75 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       `expected toolbar Home to preserve deterministic about:welcome chrome/status/content rasters, got ${JSON.stringify(toolbarHomeStableChrome)}`,
     );
 
+    const toolbarHoverTargets = [
+      { name: 'Back', x: 30, expectedRect: [31, 16, 47, 38] },
+      { name: 'Forward', x: 45, expectedRect: [46, 16, 62, 38] },
+      { name: 'Reload', x: 62, expectedRect: [63, 16, 79, 38] },
+      { name: 'Home', x: 85, expectedRect: [86, 16, 102, 38] },
+    ];
+    let beforeToolbarHoverDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+    for (const target of toolbarHoverTargets) {
+      await hoverNetSurfCanvasPixel(canvasLocator, target.x, 15);
+      const toolbarHover = await page.waitForFunction(
+        ({ minimumDirtyRects, expectedRect }) => {
+          const state = window.netsurfFramebufferState;
+          if (!state || state.dirtyRectsObserved <= minimumDirtyRects || state.lastInputEvent?.type !== 'pointermove') return null;
+          const cursor = state.cursor;
+          const handCursorOverToolbar = cursor?.hotspot?.[0] === 4
+            && cursor.hotspot?.[1] === 0
+            && cursor.rect?.[0] === expectedRect[0]
+            && cursor.rect?.[1] === expectedRect[1]
+            && cursor.rect?.[2] === expectedRect[2]
+            && cursor.rect?.[3] === expectedRect[3];
+          if (!handCursorOverToolbar) return null;
+          const canvas = document.querySelector('#viewport');
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          const metricsFor = ({ x, y, width, height }) => {
+            const { data } = ctx.getImageData(x, y, width, height);
+            let black = 0;
+            let nonGrey = 0;
+            let nonWhite = 0;
+            let hash = 0;
+            for (let i = 0; i < data.length; i += 4) {
+              const red = data[i];
+              const green = data[i + 1];
+              const blue = data[i + 2];
+              if (red < 16 && green < 16 && blue < 16) black += 1;
+              if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+              if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+              hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+            }
+            return { black, nonGrey, nonWhite, hash };
+          };
+          const toolbar = metricsFor({ x: 0, y: 0, width: 95, height: 36 });
+          const status = metricsFor({ x: 0, y: 462, width: 620, height: 18 });
+          const stableToolbarChrome = toolbar.black === 145 && toolbar.nonGrey === 1804 && toolbar.nonWhite === 3420 && toolbar.hash === 2787099418;
+          const stableStatusChrome = status.black === 404 && status.nonGrey === 1708 && status.nonWhite === 11160 && status.hash === 3968113013;
+          return stableToolbarChrome && stableStatusChrome ? {
+            dirtyRectsObserved: state.dirtyRectsObserved,
+            inputEventsForwarded: state.inputEventsForwarded,
+            lastInputEvent: state.lastInputEvent,
+            cursor,
+            toolbar,
+            status,
+          } : null;
+        },
+        { minimumDirtyRects: beforeToolbarHoverDirtyRects, expectedRect: target.expectedRect },
+      ).then((handle) => handle.jsonValue());
+      assert.deepEqual(toolbarHover.cursor.rect, target.expectedRect, `expected toolbar ${target.name} hover to expose a deterministic hand-cursor rect, got ${JSON.stringify(toolbarHover)}`);
+      assert.deepEqual(toolbarHover.cursor.hotspot, [4, 0], `expected toolbar ${target.name} hover to expose NetSurf's hand cursor hotspot, got ${JSON.stringify(toolbarHover)}`);
+      assert.deepEqual(
+        { toolbar: toolbarHover.toolbar, status: toolbarHover.status },
+        {
+          toolbar: { black: 145, nonGrey: 1804, nonWhite: 3420, hash: 2787099418 },
+          status: { black: 404, nonGrey: 1708, nonWhite: 11160, hash: 3968113013 },
+        },
+        `expected toolbar ${target.name} hover to preserve stable about:welcome toolbar/status rasters, got ${JSON.stringify(toolbarHover)}`,
+      );
+      assert.ok(toolbarHover.inputEventsForwarded >= toolbarHomeStableChrome.inputEventsForwarded + 1, `expected toolbar ${target.name} hover to forward pointer motion, got ${JSON.stringify(toolbarHover)}`);
+      beforeToolbarHoverDirtyRects = toolbarHover.dirtyRectsObserved;
+    }
+
     const beforeLogoLinkHoverDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
     await hoverNetSurfCanvasPixel(canvasLocator, 200, 138);
     const logoLinkHoverStatusBar = await page.waitForFunction(
@@ -1687,6 +1756,51 @@ test('NetSurf about:welcome search form exposes deterministic focus, typing, and
 
     const canvasLocator = page.locator('#viewport');
     const searchFormRevealed = await revealNetSurfWelcomeSearchForm(page, canvasLocator);
+    const searchRevealScrollSignatures = await waitForNetSurfWelcomeScrollSignatures(
+      page,
+      {
+        wholeDarkAfterSearchReveal: { x: 25, y: 120, width: 590, height: 340, predicate: 'darkGlyph', expectedCount: 3967, expectedHash: 3394561166 },
+        linkStripeAfterSearchReveal: { x: 20, y: 250, width: 590, height: 130, predicate: 'blueLinkGlyph', expectedCount: 4187, expectedHash: 1319617267 },
+        searchBlueLinksAfterSearchReveal: { x: 65, y: 175, width: 505, height: 140, predicate: 'blueLinkGlyph', expectedCount: 1454, expectedHash: 2524311383 },
+        scrollbarAfterSearchReveal: { x: 620, y: 38, width: 18, height: 424, predicate: 'scrollbarChrome', expectedCount: 3489, expectedHash: 3888503820 },
+      },
+      Math.max(0, searchFormRevealed.dirtyRectsObserved - 1),
+    );
+    assert.deepEqual(
+      {
+        wholeDarkAfterSearchReveal: {
+          count: searchRevealScrollSignatures.signatures.wholeDarkAfterSearchReveal.count,
+          hash: searchRevealScrollSignatures.signatures.wholeDarkAfterSearchReveal.hash,
+          rowBands: searchRevealScrollSignatures.signatures.wholeDarkAfterSearchReveal.rowBands,
+          colBandCount: searchRevealScrollSignatures.signatures.wholeDarkAfterSearchReveal.colBands.length,
+        },
+        linkStripeAfterSearchReveal: {
+          count: searchRevealScrollSignatures.signatures.linkStripeAfterSearchReveal.count,
+          hash: searchRevealScrollSignatures.signatures.linkStripeAfterSearchReveal.hash,
+          rowBands: searchRevealScrollSignatures.signatures.linkStripeAfterSearchReveal.rowBands,
+          colBandCount: searchRevealScrollSignatures.signatures.linkStripeAfterSearchReveal.colBands.length,
+        },
+        searchBlueLinksAfterSearchReveal: {
+          count: searchRevealScrollSignatures.signatures.searchBlueLinksAfterSearchReveal.count,
+          hash: searchRevealScrollSignatures.signatures.searchBlueLinksAfterSearchReveal.hash,
+          rowBands: searchRevealScrollSignatures.signatures.searchBlueLinksAfterSearchReveal.rowBands,
+          colBandCount: searchRevealScrollSignatures.signatures.searchBlueLinksAfterSearchReveal.colBands.length,
+        },
+        scrollbarAfterSearchReveal: {
+          count: searchRevealScrollSignatures.signatures.scrollbarAfterSearchReveal.count,
+          hash: searchRevealScrollSignatures.signatures.scrollbarAfterSearchReveal.hash,
+          rowBands: searchRevealScrollSignatures.signatures.scrollbarAfterSearchReveal.rowBands,
+          colBandCount: searchRevealScrollSignatures.signatures.scrollbarAfterSearchReveal.colBands.length,
+        },
+      },
+      {
+        wholeDarkAfterSearchReveal: { count: 3967, hash: 3394561166, rowBands: [[125, 139, 1290, 197], [229, 240, 396, 58], [304, 309, 128, 24], [323, 328, 128, 24], [342, 347, 128, 24], [361, 366, 64, 12], [429, 440, 1833, 263]], colBandCount: 37 },
+        linkStripeAfterSearchReveal: { count: 4187, hash: 1319617267, rowBands: [[299, 313, 1454, 196], [318, 332, 1174, 163], [337, 351, 1192, 173], [356, 367, 367, 43]], colBandCount: 41 },
+        searchBlueLinksAfterSearchReveal: { count: 1454, hash: 2524311383, rowBands: [[299, 313, 1454, 196]], colBandCount: 34 },
+        scrollbarAfterSearchReveal: { count: 3489, hash: 3888503820, rowBands: [[38, 47, 83, 16], [49, 442, 3267, 14], [444, 461, 139, 16]], colBandCount: 1 },
+      },
+      `expected deterministic intermediate about:welcome content/link bands after the second wheel search-form reveal, got ${JSON.stringify(searchRevealScrollSignatures)}`,
+    );
 
     const beforeInputHoverDirtyRects = searchFormRevealed.dirtyRectsObserved;
     await hoverNetSurfCanvasPixel(canvasLocator, 120, 200);
