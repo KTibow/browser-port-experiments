@@ -566,6 +566,104 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       `expected toolbar forward restore to preserve dirty-rect advancement, got ${JSON.stringify(toolbarBackNavigation)}`,
     );
 
+    const beforeLogoLinkHoverDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+    await hoverNetSurfCanvasPixel(canvasLocator, 200, 138);
+    const logoLinkHoverStatusBar = await page.waitForFunction(
+      (minimumDirtyRects) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.dirtyRectsObserved <= minimumDirtyRects || state.lastInputEvent?.type !== 'pointermove') return null;
+        const cursor = state.cursor;
+        const logoHandCursor = cursor?.rect?.[0] >= 199 && cursor.rect[0] <= 202
+          && cursor.rect[1] >= 137 && cursor.rect[1] <= 140
+          && cursor.hotspot?.[0] === 4
+          && cursor.hotspot?.[1] === 0
+          && cursor.rect[2] - cursor.rect[0] === 16
+          && cursor.rect[3] - cursor.rect[1] === 22;
+        if (!logoHandCursor) return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const { data } = ctx.getImageData(0, 462, 620, 18);
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const status = { black, nonGrey, nonWhite, hash };
+        const visibleLogoUrl = black === 1571 && nonGrey === 2875 && nonWhite === 11160 && hash === 3548889376;
+        return visibleLogoUrl ? {
+          dirtyRectsObserved: state.dirtyRectsObserved,
+          lastInputEvent: state.lastInputEvent,
+          cursor,
+          status,
+        } : null;
+      },
+      beforeLogoLinkHoverDirtyRects,
+    ).then((handle) => handle.jsonValue());
+    assert.deepEqual(
+      logoLinkHoverStatusBar.status,
+      { black: 1571, nonGrey: 2875, nonWhite: 11160, hash: 3548889376 },
+      `expected visible about:welcome logo link hover to rasterize its website URL in the status bar, got ${JSON.stringify(logoLinkHoverStatusBar)}`,
+    );
+    assert.deepEqual(logoLinkHoverStatusBar.cursor.hotspot, [4, 0], `expected NetSurf logo link hover to expose its hand cursor hotspot, got ${JSON.stringify(logoLinkHoverStatusBar)}`);
+
+    await clickNetSurfCanvasPixel(canvasLocator, 200, 138);
+    const logoLinkActivationStatusBar = await page.waitForFunction(
+      (minimumDirtyRects) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.dirtyRectsObserved <= minimumDirtyRects || state.lastInputEvent?.type !== 'pointerup-button') return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const statusPixels = ctx.getImageData(0, 462, 620, 18).data;
+        const logoPixels = ctx.getImageData(15, 118, 570, 45).data;
+        const metricsFor = (data) => {
+          let black = 0;
+          let nonGrey = 0;
+          let nonWhite = 0;
+          let hash = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const red = data[i];
+            const green = data[i + 1];
+            const blue = data[i + 2];
+            if (red < 16 && green < 16 && blue < 16) black += 1;
+            if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+            if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+            hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+          }
+          return { black, nonGrey, nonWhite, hash };
+        };
+        const status = metricsFor(statusPixels);
+        const logo = metricsFor(logoPixels);
+        const visibleActivationStatus = status.black === 285 && status.nonGrey === 1589 && status.nonWhite === 11160 && status.hash === 1681376340;
+        const logoStillVisible = logo.black === 0 && logo.nonGrey === 25650 && logo.nonWhite === 24510 && logo.hash === 1950299052;
+        return visibleActivationStatus && logoStillVisible ? {
+          dirtyRectsObserved: state.dirtyRectsObserved,
+          lastInputEvent: state.lastInputEvent,
+          cursor: state.cursor,
+          status,
+          logo,
+        } : null;
+      },
+      logoLinkHoverStatusBar.dirtyRectsObserved,
+    ).then((handle) => handle.jsonValue());
+    assert.deepEqual(
+      logoLinkActivationStatusBar.status,
+      { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+      `expected about:welcome logo link activation to visibly redraw a deterministic status-bar loading raster without network access, got ${JSON.stringify(logoLinkActivationStatusBar)}`,
+    );
+    assert.deepEqual(
+      logoLinkActivationStatusBar.logo,
+      { black: 0, nonGrey: 25650, nonWhite: 24510, hash: 1950299052 },
+      `expected about:welcome logo bitmap to remain visibly present after offline link activation, got ${JSON.stringify(logoLinkActivationStatusBar)}`,
+    );
+
     await hoverNetSurfCanvasPixel(canvasLocator, 320, 240);
     await page.waitForFunction(() => {
       const rect = window.netsurfFramebufferState?.cursor?.rect;
