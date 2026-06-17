@@ -19,13 +19,13 @@ What it proves:
 - The full `nsfb.js` artifact is modularized as `createNetSurfFrameBuffer`, starts from the public page, enters an Emscripten browser main loop, and exports its live framebuffer pointer/width/height/stride plus input queue shims.
 - The public page copies NetSurf framebuffer frontend pixels (currently `-f emscripten -w 640 -h 480 about:blank`) into Canvas `ImageData` from libnsfb surface `update` dirty rectangles, coalesces callback bursts to one `requestAnimationFrame` paint, and stamps canvas/body dirty-rect metadata for smoke tests.
 - Canvas pointer movement/buttons, wheel, and a broader SDL/libnsfb-style keyboard subset (navigation, modifiers, function keys, numpad fallbacks, printable Latin-1) are queued into libnsfb events for the framebuffer frontend/fbtk path.
+- The Emscripten filesystem now embeds `/netsurf` resources (`Messages`, `Choices`, default/internal/quirks/adblock CSS, welcome/credits/licence HTML, `netsurf.png`, `user.css`, and the core icons used by `resource:` fetches). The public page probes those files through exported `FS`, starts `about:welcome`, and the smoke test asserts recognizable English NetSurf chrome/about-page strings plus no missing-message/resource startup log.
 - The checked-in artifacts are intentionally offline: curl/networking, OpenSSL, JavaScript/Duktape, PNG/JPEG/WebP/JPEGXL, SVG, and freetype are disabled.
 
 What it does **not** prove yet:
 
 - No Wisp networking yet. HTTP(S) is disabled to avoid libcurl/OpenSSL while the framebuffer path is being established. The public page only documents the future `BrowserPortWisp` handoff and deliberately does not hard-code a Wisp endpoint into HTML or C/WASM.
 - Input is now wired at the libnsfb event level with deterministic Playwright coverage for click, wheel, and key forwarding; text composition/IME and exhaustive keycode coverage are not done.
-- Framebuffer frontend resources such as `Messages` and `Choices` are still not packaged into the Emscripten filesystem, so startup may log missing translations/resources even while the rendered framebuffer and input bridge work.
 - The page no longer polls/copies the full framebuffer each animation frame; it depends on the dedicated Emscripten libnsfb surface `update` callback. The checked-in artifacts have been rebuilt from the externalized surface source patch and include cursor callbacks plus C-side dirty-rect coalescing; the checked-in page also coalesces dirty callbacks before canvas painting.
 
 ## Toolchain path
@@ -84,12 +84,13 @@ The current relay script:
 
 1. Creates `wasm32-unknown-emscripten-*` wrappers around `emcc`/`em++`/`emar`/`emranlib` for NetSurf buildsystem detection.
 2. Sources NetSurf `docs/env.sh`, clones the NetSurf dependency set, disables libdom XML bindings, and builds static wasm libraries.
-3. Writes `netsurf/Makefile.config` with networking and heavyweight image/JS dependencies disabled, `NETSURF_USE_LIBICONV_PLUG := YES`, and modular Emscripten linker flags.
-4. Patches `content/fetchers/curl.h` so curl-disabled builds do not need `<curl/curl.h>`.
-5. Patches libnsfb to add `NSFB_SURFACE_EMSCRIPTEN`, `src/surface/emscripten.c`, and surface makefile wiring. The C surface source lives in `ports/netsurf/patches/libnsfb-emscripten-surface.c`; it owns RAM-like framebuffer storage, coalesces dirty rectangles before calling JS `Module.netsurfOnFramebufferUpdate(...)`, emits `Module.netsurfOnCursorUpdate(...)`, and exposes `netsurf_framebuffer_push_key/mouse/motion` event queue shims.
-6. Patches `frontends/framebuffer/framebuffer.c` to export `netsurf_framebuffer_ptr/width/height/stride` for geometry/debugging and dirty-rect copy source pointers.
-7. Patches `frontends/framebuffer/gui.c` to run `framebuffer_run_iteration` from `emscripten_set_main_loop` and export `netsurf_framebuffer_main` with the current fixed offline arguments.
-8. Links the full framebuffer frontend with normal pkg-config libraries intact. Do **not** pass `LDFLAGS=...` on the make command line; that overrides NetSurf's accumulated `-lnsfb`, `-lcss`, `-ldom`, etc. The script appends Emscripten flags in `Makefile.config` instead.
+3. Assembles an embed directory for `/netsurf` with framebuffer/common resources, generates an English framebuffer `Messages` file from `FatMessages`, writes a minimal offline `Choices`, and leaves Wisp/networking disabled.
+4. Writes `netsurf/Makefile.config` with networking and heavyweight image/JS dependencies disabled, `NETSURF_USE_LIBICONV_PLUG := YES`, `/netsurf` as the framebuffer resource path, and modular Emscripten linker flags including `--embed-file ...@/netsurf` and exported `FS`.
+5. Patches `content/fetchers/curl.h` so curl-disabled builds do not need `<curl/curl.h>`.
+6. Patches libnsfb to add `NSFB_SURFACE_EMSCRIPTEN`, `src/surface/emscripten.c`, and surface makefile wiring. The C surface source lives in `ports/netsurf/patches/libnsfb-emscripten-surface.c`; it owns RAM-like framebuffer storage, coalesces dirty rectangles before calling JS `Module.netsurfOnFramebufferUpdate(...)`, emits `Module.netsurfOnCursorUpdate(...)`, and exposes `netsurf_framebuffer_push_key/mouse/motion` event queue shims.
+7. Patches `frontends/framebuffer/framebuffer.c` to export `netsurf_framebuffer_ptr/width/height/stride` for geometry/debugging and dirty-rect copy source pointers.
+8. Patches `frontends/framebuffer/gui.c` to run `framebuffer_run_iteration` from `emscripten_set_main_loop` and export `netsurf_framebuffer_main` with the current fixed offline arguments (`about:welcome`).
+9. Links the full framebuffer frontend with normal pkg-config libraries intact. Do **not** pass `LDFLAGS=...` on the make command line; that overrides NetSurf's accumulated `-lnsfb`, `-lcss`, `-ldom`, etc. The script appends Emscripten flags in `Makefile.config` instead.
 
 ## Blockers and local patches
 
@@ -111,11 +112,11 @@ ports/netsurf/scripts/verify-artifact.sh
 npm test
 ```
 
-The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, samples deterministic NetSurf chrome/about:blank pixels, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
+The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, probes embedded `/netsurf` resources for English `Messages` and `about:welcome` text, asserts the startup log has no missing translation/resource messages, samples deterministic NetSurf chrome/content pixels, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
 
 ## Suggested next steps
 
-1. Package framebuffer resources (`Messages`, `Choices`, default CSS) into the Emscripten filesystem and assert recognizable translated chrome/about-page text in Playwright.
+1. Improve visible about-page/chrome assertions beyond the current embedded-resource text probe and pixel smoke (for example, deterministic text-region raster hashes or OCR-like glyph sampling for `about:welcome`).
 2. Expand canvas input coverage (IME/text input, modifier state, more keycodes) and identify additional deterministic UI interactions beyond the current click/wheel/key/cursor metadata coverage.
 3. Re-enable PNG/JPEG via Emscripten ports or vendored libraries after the dirty-rect path remains stable.
 4. Design a Wisp-backed fetcher before re-enabling HTTP(S); do not bake `wss://anura.pro/` into C code.

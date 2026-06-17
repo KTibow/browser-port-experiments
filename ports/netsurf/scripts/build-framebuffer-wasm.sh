@@ -127,6 +127,36 @@ for repo in \
   make -C "$WORKSPACE/$repo" HOST="$HOST_TRIPLE" PREFIX="$PREFIX" "-j$JOBS" install
 done
 
+RESOURCE_FS_DIR="$WORK_DIR/emscripten-fs/netsurf"
+rm -rf "$RESOURCE_FS_DIR"
+mkdir -p "$RESOURCE_FS_DIR/icons"
+cp -L \
+  "$WORKSPACE/netsurf/frontends/framebuffer/res/adblock.css" \
+  "$WORKSPACE/netsurf/frontends/framebuffer/res/credits.html" \
+  "$WORKSPACE/netsurf/frontends/framebuffer/res/default.css" \
+  "$WORKSPACE/netsurf/frontends/framebuffer/res/internal.css" \
+  "$WORKSPACE/netsurf/frontends/framebuffer/res/licence.html" \
+  "$WORKSPACE/netsurf/frontends/framebuffer/res/netsurf.png" \
+  "$WORKSPACE/netsurf/frontends/framebuffer/res/quirks.css" \
+  "$WORKSPACE/netsurf/frontends/framebuffer/res/welcome.html" \
+  "$RESOURCE_FS_DIR/"
+for icon in arrow-l.png content.png directory.png directory2.png hotlist-add.png hotlist-rmv.png search.png; do
+  cp -L "$WORKSPACE/netsurf/resources/icons/$icon" "$RESOURCE_FS_DIR/icons/$icon"
+done
+perl "$WORKSPACE/netsurf/tools/split-messages.pl" \
+  -l en -p fb -f messages \
+  -o "$RESOURCE_FS_DIR/Messages" \
+  "$WORKSPACE/netsurf/resources/FatMessages"
+cat > "$RESOURCE_FS_DIR/Choices" <<'EOF_CHOICES'
+# Minimal offline framebuffer Choices for browser-port-experiments.
+# Networking remains disabled in the WASM artifact; resource files are embedded.
+homepage_url:about:welcome
+accept_language:en
+core_select_menu:1
+hover_urls:0
+EOF_CHOICES
+: > "$RESOURCE_FS_DIR/user.css"
+
 cat > "$WORKSPACE/netsurf/Makefile.config" <<'EOF'
 override NETSURF_USE_CURL := NO
 override NETSURF_USE_OPENSSL := NO
@@ -143,8 +173,11 @@ override NETSURF_USE_NSPSL := YES
 override NETSURF_USE_NSLOG := YES
 override NETSURF_FB_FONTLIB := internal
 override NETSURF_FB_FRONTEND := emscripten
-LDFLAGS += -sUSE_ZLIB -sMODULARIZE=1 -sEXPORT_NAME=createNetSurfFrameBuffer -sENVIRONMENT=web,worker -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 -sEXPORTED_FUNCTIONS=["_netsurf_framebuffer_main","_netsurf_framebuffer_ptr","_netsurf_framebuffer_width","_netsurf_framebuffer_height","_netsurf_framebuffer_stride","_netsurf_framebuffer_push_key","_netsurf_framebuffer_push_mouse","_netsurf_framebuffer_push_motion"] -sEXPORTED_RUNTIME_METHODS=["ccall","cwrap"]
+override NETSURF_FRAMEBUFFER_RESOURCES := /netsurf
+override NETSURF_FB_RESPATH := /netsurf
+LDFLAGS += -sUSE_ZLIB -sMODULARIZE=1 -sEXPORT_NAME=createNetSurfFrameBuffer -sENVIRONMENT=web,worker -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 -sEXPORTED_FUNCTIONS=["_netsurf_framebuffer_main","_netsurf_framebuffer_ptr","_netsurf_framebuffer_width","_netsurf_framebuffer_height","_netsurf_framebuffer_stride","_netsurf_framebuffer_push_key","_netsurf_framebuffer_push_mouse","_netsurf_framebuffer_push_motion"] -sEXPORTED_RUNTIME_METHODS=["ccall","cwrap","FS"]
 EOF
+printf 'LDFLAGS += --embed-file %s@/netsurf\n' "$RESOURCE_FS_DIR" >> "$WORKSPACE/netsurf/Makefile.config"
 
 python3 - "$WORKSPACE/netsurf/content/fetchers/curl.h" <<'PY'
 from pathlib import Path
@@ -286,7 +319,7 @@ int netsurf_framebuffer_main(void)
 \tchar arg4[] = "640";
 \tchar arg5[] = "-h";
 \tchar arg6[] = "480";
-\tchar arg7[] = "about:blank";
+\tchar arg7[] = "about:welcome";
 \tchar *argv[] = { arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7 };
 
 \treturn main(8, argv);
@@ -324,6 +357,7 @@ Built by ports/netsurf/scripts/build-framebuffer-wasm.sh
 Frontend: full NetSurf framebuffer with patched libnsfb Emscripten dirty-rect surface
 JS entry: createNetSurfFrameBuffer; page calls netsurf_framebuffer_main and paints coalesced nsfb_update dirty rectangles
 Input: canvas pointer, wheel, and expanded keyboard events queue into libnsfb/fbtk
+Resources: embedded /netsurf Emscripten filesystem with Messages, Choices, default/internal/quirks/adblock CSS, welcome/credits/licence HTML, and core icons
 Networking: CURL disabled; offline about:, data:, file/resource fetchers only; future socket fetcher should use BrowserPortWisp from the app with no endpoint hard-coded in C/WASM
 EOF
 cat > "$PUBLIC_DIR/probe.html" <<'EOF'

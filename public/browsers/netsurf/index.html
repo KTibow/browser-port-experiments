@@ -32,7 +32,10 @@
           rectangles into Canvas <code>ImageData</code>, and canvas mouse/keyboard events are queued back into
           <code>fbtk</code>/<code>libnsfb</code>. Networking is intentionally disabled; future socket work should consume
           <code>BrowserPortWisp</code> from the host app rather than baking an endpoint into the WASM artifact.
-          The current command line is <code>-f emscripten -w 640 -h 480 about:blank</code>.
+          NetSurf's framebuffer resources are embedded in the Emscripten filesystem at <code>/netsurf</code>
+          (<code>Messages</code>, <code>Choices</code>, CSS, welcome/credits/licence pages, and core icons), so
+          the startup path can load English translations and the offline about page without network access.
+          The current command line is <code>-f emscripten -w 640 -h 480 about:welcome</code>.
         </p>
         <p id="status" class="note">Loading nsfb.js…</p>
       </section>
@@ -82,6 +85,7 @@
         dirtyRectsObserved: 0,
         coalescedDirtyRectsPainted: 0,
         lastDirtyRect: null,
+        resourcePackage: null,
       };
       window.netsurfFramebufferState = framebufferState;
 
@@ -109,6 +113,7 @@
           <dt>Input bridge</dt><dd>${framebufferState.inputBridge}; forwarded ${framebufferState.inputEventsForwarded}${framebufferState.lastInputEvent ? `; last ${framebufferState.lastInputEvent.type}` : ''}</dd>
           <dt>Dirty rects</dt><dd>${framebufferState.dirtyRectsObserved} painted from ${framebufferState.dirtyRectCallbacksObserved} callbacks${framebufferState.lastDirtyRect ? `; last ${framebufferState.lastDirtyRect.join(',')}` : ''}</dd>
           <dt>Cursor hook</dt><dd>${framebufferState.cursor ? `${framebufferState.cursor.rect.join(',')} hotspot ${framebufferState.cursor.hotspot.join(',')}` : 'waiting for libnsfb cursor callback'}</dd>
+          <dt>Resources</dt><dd>${framebufferState.resourcePackage ? `${framebufferState.resourcePackage.status}; ${framebufferState.resourcePackage.recognizableText.join(' / ')}` : 'waiting for embedded /netsurf package'}</dd>
           <dt>Wisp bridge</dt><dd>${framebufferState.wispBridgeAvailable ? 'BrowserPortWisp available for future socket fetcher' : 'not connected on this standalone offline page'}</dd>
         `;
       }
@@ -246,6 +251,37 @@
         document.body.dataset.netsurfFramebufferLastInput = type;
       }
 
+      function probePackagedResources(module) {
+        const FS = module.FS;
+        const text = (path) => FS.readFile(path, { encoding: 'utf8' });
+        const resources = {
+          messages: text('/netsurf/Messages'),
+          choices: text('/netsurf/Choices'),
+          defaultCss: text('/netsurf/default.css'),
+          internalCss: text('/netsurf/internal.css'),
+          welcome: text('/netsurf/welcome.html'),
+        };
+        const recognizableText = [
+          resources.messages.match(/^NetSurf:\s*(.+)$/m)?.[1] || 'NetSurf',
+          resources.messages.match(/^Back:\s*(.+)$/m)?.[1] || 'Back',
+          resources.messages.match(/^Reload:\s*(.+)$/m)?.[1] || 'Reload',
+          /Welcome to NetSurf/i.test(resources.welcome) ? 'Welcome to NetSurf' : 'welcome.html',
+        ];
+        framebufferState.resourcePackage = {
+          status: 'embedded /netsurf resources loaded',
+          recognizableText,
+          messagesBytes: resources.messages.length,
+          choicesBytes: resources.choices.length,
+          defaultCssBytes: resources.defaultCss.length,
+          internalCssBytes: resources.internalCss.length,
+          welcomeBytes: resources.welcome.length,
+        };
+        document.body.dataset.netsurfResourcesPackaged = 'true';
+        document.body.dataset.netsurfResourceText = recognizableText.join('|');
+        appendLog(`[resources] ${framebufferState.resourcePackage.status}: ${recognizableText.join(' / ')}`);
+        renderMetadata();
+      }
+
       function installInputHandlers(module) {
         const pushKey = module.cwrap('netsurf_framebuffer_push_key', 'number', ['number', 'number']);
         const pushMouse = module.cwrap('netsurf_framebuffer_push_mouse', 'number', ['number', 'number']);
@@ -327,6 +363,7 @@
         });
 
         framebufferState.moduleReady = true;
+        probePackagedResources(module);
         installInputHandlers(module);
 
         try {

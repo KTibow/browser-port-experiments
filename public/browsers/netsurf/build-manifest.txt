@@ -2,4 +2,5 @@ Built by ports/netsurf/scripts/build-framebuffer-wasm.sh
 Frontend: full NetSurf framebuffer with patched libnsfb Emscripten dirty-rect surface
 JS entry: createNetSurfFrameBuffer; page calls netsurf_framebuffer_main and paints coalesced nsfb_update dirty rectangles
 Input: canvas pointer, wheel, and expanded keyboard events queue into libnsfb/fbtk
+Resources: embedded /netsurf Emscripten filesystem with Messages, Choices, default/internal/quirks/adblock CSS, welcome/credits/licence HTML, and core icons
 Networking: CURL disabled; offline about:, data:, file/resource fetchers only; future socket fetcher should use BrowserPortWisp from the app with no endpoint hard-coded in C/WASM
