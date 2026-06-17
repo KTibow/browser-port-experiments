@@ -36,6 +36,23 @@
       }
     },
     {
+      "id": "windows95",
+      "name": "Windows 95",
+      "engine": "Internet Explorer (Trident / MSHTML)",
+      "era": "1995",
+      "blurb": "The OS that put a Start button on the world. Windows 95 resumed from a saved state, running Internet Explorer (Trident). A genuine 1990s browsing experience entirely in your tab.",
+      "hint": "Open Internet Explorer from the desktop. If a page won't load, enable networking first (a 'networking.bat' may be on the desktop).",
+      "highlight": false,
+      "tested": "boots",
+      "config": {
+        "memory_size": 33554432,
+        "hda": { "url": "w95/.img", "size": 242049024, "async": true, "fixed_chunk_size": 262144, "use_parts": true },
+        "state": { "url": "windows95_state.bin.zst" },
+        "mac_address_translation": true,
+        "net_device_type": "ne2k"
+      }
+    },
+    {
       "id": "windows98",
       "name": "Windows 98",
       "engine": "Internet Explorer (Trident / MSHTML)",

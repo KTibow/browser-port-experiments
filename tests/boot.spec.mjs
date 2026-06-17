@@ -18,6 +18,9 @@ test("@smoke KolibriOS boots to a graphical desktop", async ({ page }) => {
 // browser engines are available (IE/Trident, WebKit) and that state restore works
 // with the vendored wasm.
 const stateOses = [
+  // Windows 95: classic teal desktop (1024x768) restores in ~2s; it is mostly one
+  // color plus a handful of icons (IE, Control Panel, System...), so ~12 colors.
+  { id: "windows95", minWidth: 800, minColors: 9 }, // Internet Explorer (Trident)
   { id: "windows98", minWidth: 600 },   // Internet Explorer (Trident)
   { id: "windows2000", minWidth: 600 }, // Internet Explorer 5 (Trident)
   { id: "windowsme", minWidth: 600 },   // Internet Explorer (Trident)

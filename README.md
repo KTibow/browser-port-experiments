@@ -23,7 +23,7 @@ Instead of porting a single browser engine, we emulate whole operating systems a
 run their *native* browsers — so we get real, feature-complete engines:
 
 - **KolibriOS** → WebView (+ NetSurf) — tiny, boots in seconds
-- **Windows 98 / 2000 / ME** → Internet Explorer (Trident/MSHTML)
+- **Windows 95 / 98 / 2000 / ME** → Internet Explorer (Trident/MSHTML)
 - **Haiku** → WebPositive (WebKit)
 - **ReactOS** → Windows-compatible shell
 - **SerenityOS** → Ladybird (independent LibWeb engine)

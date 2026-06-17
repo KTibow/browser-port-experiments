@@ -69,6 +69,7 @@ the badge on the landing page.
 | id | browser/engine | status | notes |
 | --- | --- | --- | --- |
 | kolibrios | WebView (+ NetSurf) | ✅ boots | 1024×768 desktop in ~10s; Wisp connects; CI `@smoke` |
+| windows95 | Internet Explorer (Trident) | ✅ boots | restores from state in ~2s; CI `@state`; classic teal desktop + IE icon verified; ne2k |
 | windows98 | Internet Explorer (Trident) | ✅ boots | restores from state; CI `@state`; needs `networking.bat` |
 | windows2000 | IE5 + K-Meleon + Lynx + Retrozilla | ✅ boots | restores from state; CI `@state`; 4 browsers! run `networking.bat` |
 | windowsme | Internet Explorer (Trident) | ✅ boots | restores from state in ~2s; CI `@state`; Millennium desktop verified |
@@ -217,6 +218,21 @@ single relay going unless there's clearly parallelizable, conflict-free work.
   `emulator.bus.send("mouse-delta",[dx,dy])` / `"mouse-click"` (there's no public
   `mouse_send_delta` method). Next: more browsers (Task 4: TinyCore, FreeBSD,
   Windows 95, Redox) or Task 3/5.
+- 2026-06-17 — **worker (run: win95)**: **Completed** the Windows 95 add (now 12
+  browsers, 8 verified). Task 4 (add more browsers), proven low-risk state-restore
+  pattern. CDN: copy.sh's *old* win95 profile pairs `w95/.img` (parts
+  `w95/0-262144.img`, 256K chunks, 242049024 B, **32 MB RAM**) with
+  `windows95_state.bin.zst` (valid zstd magic `28 b5 2f fd`); both resolve 206 +
+  ACAO with no Referer. (The newer `windows95-v2/.img` has no state and cold-boots
+  slowly, so I used the state image for a fast resume.) **Verified by reading the
+  screenshot**: restores in ~2s to the real Windows 95 desktop — classic teal
+  background, Network Neighborhood / Recycle Bin / (C:) / Control Panel / System,
+  and the **Internet Explorer** icon (IE globe). Set `tested: "boots"`; added a
+  `@state` boot test (passes in 2.4s, asserts ≥800 width + ≥9 colors so the
+  mostly-teal desktop clears it). `@smoke` still green (3 passed). **Gotcha:** the
+  win95 *state* pairs with the older `w95/.img` at **32 MB RAM** (memory must match
+  the state); the current `windows95-v2` profile is stateless. Next: more browsers
+  (Task 4: TinyCore, FreeBSD, Redox) or Task 3/5.
 - 2026-06-17 — **worker**: claimed **Task 4** (add more browsers). Picked **9front**
   (Plan 9 fork; ships Mothra + NetSurf) because it has a state image — the proven,
   low-risk @state restore pattern — and is a genuinely useful, actively-developed
