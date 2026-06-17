@@ -46,6 +46,53 @@ for (const os of stateOses) {
   });
 }
 
+// SliTaz is a live boot (the ISO is attached as a hard disk). It auto-boots
+// through its language menu and brings up a full graphical desktop (1280x720)
+// with Midori (WebKitGTK), and DHCP over Wisp comes up on its own. We assert on
+// the rich desktop (hundreds of colors), not the early boot/menu screens.
+test("slitaz boots its live image into the graphical desktop @livecd", async ({ page }, testInfo) => {
+  const info = await bootAndWaitForScreen(page, "slitaz", {
+    timeoutMs: 220_000,
+    minWidth: 1000,   // X11 switches the canvas to 1280x720
+    minColors: 200,   // full Openbox desktop + wallpaper, not the boot menu
+  });
+  expect(info.width).toBeGreaterThanOrEqual(1000);
+  expect(info.colors).toBeGreaterThanOrEqual(200);
+  await expect(page.locator("#status")).toHaveText("Running");
+  await testInfo.attach("slitaz.png", {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
+  if (process.env.SHOT_DIR) {
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/shot-slitaz.png` });
+  }
+});
+
+// Android-x86 4.4 boots from scratch through GRUB (640x480, colorful splash) and
+// a long kernel/zygote/bootanimation phase (800x600, very few colors) before the
+// launcher appears (800x600, dozens of colors). Software x86 emulation makes this
+// slow (~4-5 min) and it streams ~250 MB, so this is a dedicated @slow test with
+// a generous timeout. We require the 800x600 launcher with enough colors to rule
+// out the low-color boot animation.
+test("android4 boots to the Android launcher @slow", async ({ page }, testInfo) => {
+  test.setTimeout(440_000);
+  const info = await bootAndWaitForScreen(page, "android4", {
+    timeoutMs: 410_000,
+    minWidth: 780,   // launcher is 800x600 (GRUB menu is 640x480)
+    minColors: 45,   // launcher home screen; boot animation stays well below this
+  });
+  expect(info.width).toBeGreaterThanOrEqual(780);
+  expect(info.colors).toBeGreaterThanOrEqual(45);
+  await expect(page.locator("#status")).toHaveText("Running");
+  await testInfo.attach("android4.png", {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
+  if (process.env.SHOT_DIR) {
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/shot-android4.png` });
+  }
+});
+
 // Damn Small Linux is a live CD: no saved state. Its Syslinux bootloader waits
 // at a `boot:` prompt, so the registry uses `autokeys` to press Enter; then it
 // loads X11. The full fluxbox desktop has far more colors than the 16-color

@@ -27,6 +27,8 @@ run their *native* browsers — so we get real, feature-complete engines:
 - **Haiku** → WebPositive (WebKit)
 - **ReactOS** → Windows-compatible shell
 - **SerenityOS** → Ladybird (independent LibWeb engine)
+- **SliTaz GNU/Linux** → Midori + TazWeb (WebKitGTK)
+- **Android 4.4 (KitKat)** → AOSP Browser (WebKit)
 - **Damn Small Linux** → Dillo + Firefox
 
 OS images are streamed on demand from copy.sh's CDN (`i.copy.sh`, the same host
@@ -76,10 +78,15 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
 - `@state` — saved-state OSes resume a booted desktop (Win98/2000/ME, Haiku,
   ReactOS, SerenityOS)
 - `@cdrom` — Damn Small Linux boots its live CD into the X11 desktop
+- `@livecd` — SliTaz live-boots to its graphical Openbox desktop (Midori/WebKit)
+- `@slow` — Android 4.4 boots to the launcher (~4-5 min; streams ~250 MB)
 - `@network` — boots Linux, DHCP, and `wget`s a live page over Wisp
 
 `node scripts/probe.mjs <osId>` boots a single OS and saves a screenshot to
 `/tmp/probe-shots/` — handy for eyeballing a new image (needs `npm run serve`).
+`node scripts/watch.mjs <osId> [totalMs] [shotEveryMs]` logs a full boot timeline
+with interval screenshots — useful for slow guests (SliTaz, Android) that pass
+through boot menus before the real desktop.
 
 ## Deployment note
 

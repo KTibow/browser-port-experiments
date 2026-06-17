@@ -75,6 +75,8 @@ the badge on the landing page.
 | haiku | WebPositive (WebKit) + Links | ✅ boots | restores from state; CI `@state`; run `networking.sh` |
 | reactos | IE-compatible shell | ✅ boots | restores from state in ~2s; CI `@state`; virtio NIC, acpi; v0.4.15 desktop verified |
 | serenityos | Ladybird (LibWeb) | ✅ boots | **fixed**: parts are zstd (`serenity-v3/.img.zst`, not `.img`); CI `@state`; desktop + terminal verified |
+| slitaz | Midori + TazWeb (WebKitGTK) | ✅ boots | live boot (ISO as hda); auto-boots through lang menu to a 1280×720 Openbox desktop in ~135s; **DHCP-over-Wisp auto-connects**; CI `@livecd`; Midori+TazWeb confirmed in ISO rootfs |
+| android4 | AOSP Browser (WebKit) | ✅ boots | Android-x86 4.4 KitKat; full boot ~4-5min (streams ~250 MB), reaches the real launcher; Wisp connects; CI `@slow` (440s budget) |
 | dsl | Dillo + Firefox | ✅ boots | live CD; Syslinux waits at `boot:` so registry uses `autokeys` to press Enter; X11 in ~50s; DHCP-over-Wisp connected; CI `@cdrom` |
 | (buildroot) | — (test harness only) | ✅ network | `@network`: DHCP + `wget http://example.com` over Wisp returns real HTML |
 
@@ -97,9 +99,11 @@ When you start a task, append a line to the Log with your run id and "claimed".
 3. **Per-OS "loads a page" automation.** Where feasible, script the guest to open
    its browser and load a page over Wisp, asserting on pixels or, better, on serial
    for text browsers. KolibriOS has a CLI; Linux guests can run `links`.
-4. **Add more useful browsers.** Candidates with real engines: Windows XP (if a
-   state image exists), more Linux images with modern browsers, Arch + a browser.
-   Keep images CDN-streamable; don't commit big blobs.
+4. **Add more useful browsers.** *(in progress — SliTaz + Android 4.4 added & verified.)*
+   More candidates with real engines on the copy.sh CDN: TinyCore (needs a browser
+   extension fetched), 9front (mothra), FreeBSD (console — needs `links`/X), Redox
+   (state image; check for a browser), Windows 95 (IE). Windows XP is **not** on the
+   copy.sh CDN. Keep images CDN-streamable; don't commit big blobs.
 5. **Resilience.** Mirror the *small* critical images (kolibri.img, buildroot) into
    the repo or a GitHub Release as a fallback `?cdn=` source, so a copy.sh outage
    doesn't take the whole site down. Verify CORS + range support on the mirror.
@@ -173,3 +177,28 @@ single relay going unless there's clearly parallelizable, conflict-free work.
   (`[{delay,text}]`) to the runner so such guests boot unattended — verified DSL
   reaches X11 with no manual keypress. Next up: Task 3 (per-OS "loads a page"
   automation) or Task 5 (mirror small images for CDN resilience).
+- 2026-06-17 — **worker**: claimed Task 4 (add more useful browsers). Surveyed the
+  copy.sh profile list and added **two new, fully-verified browsers** (now 10 total,
+  6 verified):
+  • **SliTaz GNU/Linux (rolling 2024)** — a <60 MB live Linux that auto-boots to a
+    1280×720 Openbox desktop in ~135s. **Confirmed it ships Midori (WebKitGTK 1.0)
+    + TazWeb** by extracting the ISO's LZMA-cpio rootfs layers (`/usr/bin/midori`,
+    `libwebkitgtk-1.0.so`, `midori.desktop`). DHCP-over-Wisp comes up on its own
+    (TazPkg tried to fetch package lists). Probe + a real `@livecd` Playwright test
+    both pass; eyeballed the desktop screenshot (spider wallpaper, icons, panel).
+  • **Android 4.4 KitKat (android-x86)** — streams ~250 MB; full software-emulated
+    boot takes ~4-5 min but reaches the **real Android launcher** (home screen,
+    status-bar clock, nav bar, "Welcome" first-run card), with the WebKit AOSP
+    Browser. Wisp connects. Added a `@slow` test (440s budget) that requires the
+    800×600 launcher with ≥45 colors (rules out the low-color boot animation) —
+    passes; verified the launcher screenshot, not a crash.
+  **Gotchas learned:** (1) The runner's `<canvas>` mouse is **relative-mode PS/2**,
+  so Playwright absolute clicks land in the wrong place — don't rely on GUI clicks
+  for verification; inspect the ISO instead (`7z e iso boot/rootfs*.gz`, then
+  `lzma -dc | cpio -idm` — SliTaz rootfs are LZMA, not gzip, despite the `.gz`).
+  (2) Boot menus/splashes can have *more* colors than the eventual desktop, so
+  thresholds must combine **width + colors** (GRUB 640×480 vs launcher 800×600).
+  (3) `npx playwright test` reuses the dev server only when `CI` is unset; on the
+  runner `CI=true`, so kill any manual `serve.mjs` first. Added `scripts/watch.mjs`
+  (boot-timeline logger + interval screenshots) for slow guests. `@smoke` still
+  green (3 passed). Next: more browsers (Task 4 has candidates left) or Task 3/5.

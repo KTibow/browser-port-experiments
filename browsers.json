@@ -121,6 +121,36 @@
       }
     },
     {
+      "id": "slitaz",
+      "name": "SliTaz GNU/Linux",
+      "engine": "Midori / TazWeb (WebKitGTK)",
+      "era": "2024 (rolling)",
+      "blurb": "SliTaz is a tiny (under 60 MB) but complete GNU/Linux distribution that boots a full graphical desktop from a live CD. It ships Midori, a WebKitGTK browser (plus SliTaz's own WebKit-based TazWeb). DHCP networking over Wisp comes up automatically.",
+      "hint": "Wait for the desktop, then right-click it (or use the panel) and open Midori under Favorite Applications / Internet. Networking is automatic.",
+      "highlight": true,
+      "tested": "boots",
+      "config": {
+        "memory_size": 536870912,
+        "hda": { "url": "slitaz-rolling-2024.iso", "size": 56573952, "async": false },
+        "net_device_type": "ne2k"
+      }
+    },
+    {
+      "id": "android4",
+      "name": "Android 4.4 (KitKat)",
+      "engine": "AOSP Browser (WebKit)",
+      "era": "2013",
+      "blurb": "Android-x86 4.4 'KitKat' running the stock AOSP Browser, a WebKit-based engine. Android is one of the most widely used platforms in the world; here it runs entirely in your tab. Networked through Wisp.",
+      "hint": "Patience: it streams ~250 MB and the full Android boot takes ~4-5 minutes in software emulation. When the home screen appears, dismiss the welcome card and open the Browser app.",
+      "highlight": false,
+      "tested": "boots",
+      "config": {
+        "memory_size": 536870912,
+        "cdrom": { "url": "android_x86_nonsse3_4.4r1_20140904/.iso", "size": 247463936, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
+        "net_device_type": "ne2k"
+      }
+    },
+    {
       "id": "dsl",
       "name": "Damn Small Linux",
       "engine": "Dillo + Mozilla Firefox",
