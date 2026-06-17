@@ -262,7 +262,8 @@ async function waitForNetSurfWelcomeScrollSignatures(page, expected, beforeDirty
 
       const darkGlyph = (red, green, blue) => red <= 110 && green <= 110 && blue <= 110;
       const blueLinkGlyph = (red, green, blue) => blue > 120 && red < 120 && green < 180 && blue > red + 40 && blue > green + 20;
-      const predicates = { darkGlyph, blueLinkGlyph };
+      const scrollbarChrome = (red, green, blue) => !(red === 255 && green === 255 && blue === 255) && !(red === 221 && green === 221 && blue === 221);
+      const predicates = { darkGlyph, blueLinkGlyph, scrollbarChrome };
       const signatureFor = ({ x, y, width, height, predicate }) => {
         const testPixel = predicates[predicate];
         const rowCounts = [];
@@ -279,7 +280,7 @@ async function waitForNetSurfWelcomeScrollSignatures(page, expected, beforeDirty
             if (testPixel(red, green, blue)) {
               rowCount += 1;
               count += 1;
-              const colorHash = predicate === 'blueLinkGlyph' ? red ^ (green << 8) ^ (blue << 16) : 0;
+              const colorHash = predicate === 'blueLinkGlyph' || predicate === 'scrollbarChrome' ? red ^ (green << 8) ^ (blue << 16) : 0;
               hash = (Math.imul(hash, 16777619) ^ ((xx - x) * 13) ^ ((yy - y) * 17) ^ colorHash) >>> 0;
             }
           }
@@ -672,6 +673,8 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       {
         welcomeLinksAfterWheel: { x: 20, y: 120, width: 590, height: 340, predicate: 'blueLinkGlyph', expectedCount: 4187, expectedHash: 3706658537 },
         welcomeLowerTextAfterWheel: { x: 25, y: 260, width: 590, height: 190, predicate: 'darkGlyph', expectedCount: 844, expectedHash: 2532503896 },
+        welcomeBottomLinksAfterWheel: { x: 20, y: 360, width: 590, height: 100, predicate: 'blueLinkGlyph', expectedCount: 4187, expectedHash: 3130853337 },
+        scrollbarAfterWheel: { x: 620, y: 38, width: 18, height: 424, predicate: 'scrollbarChrome', expectedCount: 3535, expectedHash: 1373962969 },
       },
       beforeScrollDirtyRects,
     );
@@ -689,10 +692,24 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
           rowBands: wheelScrollSignatures.signatures.welcomeLowerTextAfterWheel.rowBands,
           colBandCount: wheelScrollSignatures.signatures.welcomeLowerTextAfterWheel.colBands.length,
         },
+        welcomeBottomLinksAfterWheel: {
+          count: wheelScrollSignatures.signatures.welcomeBottomLinksAfterWheel.count,
+          hash: wheelScrollSignatures.signatures.welcomeBottomLinksAfterWheel.hash,
+          rowBands: wheelScrollSignatures.signatures.welcomeBottomLinksAfterWheel.rowBands,
+          colBandCount: wheelScrollSignatures.signatures.welcomeBottomLinksAfterWheel.colBands.length,
+        },
+        scrollbarAfterWheel: {
+          count: wheelScrollSignatures.signatures.scrollbarAfterWheel.count,
+          hash: wheelScrollSignatures.signatures.scrollbarAfterWheel.hash,
+          rowBands: wheelScrollSignatures.signatures.scrollbarAfterWheel.rowBands,
+          colBandCount: wheelScrollSignatures.signatures.scrollbarAfterWheel.colBands.length,
+        },
       },
       {
         welcomeLinksAfterWheel: { count: 4187, hash: 3706658537, rowBands: [[363, 377, 1454, 196], [382, 396, 1174, 163], [401, 415, 1192, 173], [420, 431, 367, 43]], colBandCount: 41 },
         welcomeLowerTextAfterWheel: { count: 844, hash: 2532503896, rowBands: [[293, 304, 396, 58], [368, 373, 128, 24], [387, 392, 128, 24], [406, 411, 128, 24], [425, 430, 64, 12]], colBandCount: 11 },
+        welcomeBottomLinksAfterWheel: { count: 4187, hash: 3130853337, rowBands: [[363, 377, 1454, 196], [382, 396, 1174, 163], [401, 415, 1192, 173], [420, 431, 367, 43]], colBandCount: 41 },
+        scrollbarAfterWheel: { count: 3535, hash: 1373962969, rowBands: [[38, 442, 3396, 18], [444, 461, 139, 16]], colBandCount: 1 },
       },
       `expected deterministic scroll-revealed about:welcome link/lower-page glyph coverage after wheel, got ${JSON.stringify(wheelScrollSignatures)}`,
     );
@@ -774,6 +791,9 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       {
         welcomeLinksAfterPageDown: { x: 20, y: 120, width: 590, height: 340, predicate: 'blueLinkGlyph', expectedCount: 4187, expectedHash: 167346089 },
         welcomeLowerTextAfterPageDown: { x: 25, y: 260, width: 590, height: 190, predicate: 'darkGlyph', expectedCount: 2281, expectedHash: 2120331461 },
+        welcomeBottomTextAfterPageDown: { x: 20, y: 360, width: 590, height: 100, predicate: 'darkGlyph', expectedCount: 1897, expectedHash: 417783980 },
+        welcomeBottomLinksAfterPageDown: { x: 20, y: 360, width: 590, height: 100, predicate: 'blueLinkGlyph', expectedCount: 237, expectedHash: 3163971331 },
+        scrollbarAfterPageDown: { x: 620, y: 38, width: 18, height: 424, predicate: 'scrollbarChrome', expectedCount: 3489, expectedHash: 3888503820 },
       },
       beforePageDownDirtyRects,
     );
@@ -791,10 +811,31 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
           rowBands: pageDownScrollSignatures.signatures.welcomeLowerTextAfterPageDown.rowBands,
           colBandCount: pageDownScrollSignatures.signatures.welcomeLowerTextAfterPageDown.colBands.length,
         },
+        welcomeBottomTextAfterPageDown: {
+          count: pageDownScrollSignatures.signatures.welcomeBottomTextAfterPageDown.count,
+          hash: pageDownScrollSignatures.signatures.welcomeBottomTextAfterPageDown.hash,
+          rowBands: pageDownScrollSignatures.signatures.welcomeBottomTextAfterPageDown.rowBands,
+          colBandCount: pageDownScrollSignatures.signatures.welcomeBottomTextAfterPageDown.colBands.length,
+        },
+        welcomeBottomLinksAfterPageDown: {
+          count: pageDownScrollSignatures.signatures.welcomeBottomLinksAfterPageDown.count,
+          hash: pageDownScrollSignatures.signatures.welcomeBottomLinksAfterPageDown.hash,
+          rowBands: pageDownScrollSignatures.signatures.welcomeBottomLinksAfterPageDown.rowBands,
+          colBandCount: pageDownScrollSignatures.signatures.welcomeBottomLinksAfterPageDown.colBands.length,
+        },
+        scrollbarAfterPageDown: {
+          count: pageDownScrollSignatures.signatures.scrollbarAfterPageDown.count,
+          hash: pageDownScrollSignatures.signatures.scrollbarAfterPageDown.hash,
+          rowBands: pageDownScrollSignatures.signatures.scrollbarAfterPageDown.rowBands,
+          colBandCount: pageDownScrollSignatures.signatures.scrollbarAfterPageDown.colBands.length,
+        },
       },
       {
         welcomeLinksAfterPageDown: { count: 4187, hash: 167346089, rowBands: [[299, 313, 1454, 196], [318, 332, 1174, 163], [337, 351, 1192, 173], [356, 367, 367, 43]], colBandCount: 41 },
         welcomeLowerTextAfterPageDown: { count: 2281, hash: 2120331461, rowBands: [[304, 309, 128, 24], [323, 328, 128, 24], [342, 347, 128, 24], [361, 366, 64, 12], [429, 440, 1833, 263]], colBandCount: 36 },
+        welcomeBottomTextAfterPageDown: { count: 1897, hash: 417783980, rowBands: [[361, 366, 64, 12], [429, 440, 1833, 263]], colBandCount: 35 },
+        welcomeBottomLinksAfterPageDown: { count: 237, hash: 3163971331, rowBands: [[360, 367, 237, 43]], colBandCount: 7 },
+        scrollbarAfterPageDown: { count: 3489, hash: 3888503820, rowBands: [[38, 47, 83, 16], [49, 442, 3267, 14], [444, 461, 139, 16]], colBandCount: 1 },
       },
       `expected deterministic scroll-revealed about:welcome link/lower-page glyph coverage after PageDown, got ${JSON.stringify(pageDownScrollSignatures)}`,
     );
@@ -809,6 +850,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       {
         welcomeLogoBackToTop: { x: 20, y: 120, width: 590, height: 340, predicate: 'blueLinkGlyph', expectedCount: 3274, expectedHash: 2837369989 },
         welcomeIntroBackToTop: { x: 25, y: 120, width: 590, height: 340, predicate: 'darkGlyph', expectedCount: 8757, expectedHash: 1088269131 },
+        scrollbarBackToTop: { x: 620, y: 38, width: 18, height: 424, predicate: 'scrollbarChrome', expectedCount: 3735, expectedHash: 4246721373 },
       },
       beforeBackToTopDirtyRects,
     );
@@ -826,10 +868,17 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
           rowBands: backToTopSignatures.signatures.welcomeIntroBackToTop.rowBands,
           colBandCount: backToTopSignatures.signatures.welcomeIntroBackToTop.colBands.length,
         },
+        scrollbarBackToTop: {
+          count: backToTopSignatures.signatures.scrollbarBackToTop.count,
+          hash: backToTopSignatures.signatures.scrollbarBackToTop.hash,
+          rowBands: backToTopSignatures.signatures.scrollbarBackToTop.rowBands,
+          colBandCount: backToTopSignatures.signatures.scrollbarBackToTop.colBands.length,
+        },
       },
       {
         welcomeLogoBackToTop: { count: 3274, hash: 2837369989, rowBands: [[123, 156, 3274, 364]], colBandCount: 4 },
         welcomeIntroBackToTop: { count: 8757, hash: 1088269131, rowBands: [[196, 219, 3164, 202], [247, 261, 1996, 294], [268, 282, 1911, 300], [289, 303, 1290, 197], [393, 404, 396, 58]], colBandCount: 43 },
+        scrollbarBackToTop: { count: 3735, hash: 4246721373, rowBands: [[38, 442, 3596, 18], [444, 461, 139, 16]], colBandCount: 1 },
       },
       `expected deterministic about:welcome back-to-top glyph/logo coverage after upward wheel navigation, got ${JSON.stringify(backToTopSignatures)}`,
     );
@@ -844,6 +893,8 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       {
         welcomeLinksAfterKeyboardPageDown: { x: 20, y: 120, width: 590, height: 340, predicate: 'blueLinkGlyph', expectedCount: 4187, expectedHash: 167346089 },
         welcomeLowerTextAfterKeyboardPageDown: { x: 25, y: 260, width: 590, height: 190, predicate: 'darkGlyph', expectedCount: 2281, expectedHash: 2120331461 },
+        welcomeBottomTextAfterKeyboardPageDown: { x: 20, y: 360, width: 590, height: 100, predicate: 'darkGlyph', expectedCount: 1897, expectedHash: 417783980 },
+        scrollbarAfterKeyboardPageDown: { x: 620, y: 38, width: 18, height: 424, predicate: 'scrollbarChrome', expectedCount: 3489, expectedHash: 3888503820 },
       },
       beforeKeyboardScrollDirtyRects,
     );
@@ -855,6 +906,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       {
         welcomeLogoAfterKeyboardPageUp: { x: 20, y: 120, width: 590, height: 340, predicate: 'blueLinkGlyph', expectedCount: 3274, expectedHash: 2837369989 },
         welcomeIntroAfterKeyboardPageUp: { x: 25, y: 120, width: 590, height: 340, predicate: 'darkGlyph', expectedCount: 8757, expectedHash: 1088269131 },
+        scrollbarAfterKeyboardPageUp: { x: 620, y: 38, width: 18, height: 424, predicate: 'scrollbarChrome', expectedCount: 3735, expectedHash: 4246721373 },
       },
       keyboardPageDownSignatures.dirtyRectsObserved,
     );
@@ -872,10 +924,17 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
           rowBands: keyboardPageUpBackToTopSignatures.signatures.welcomeIntroAfterKeyboardPageUp.rowBands,
           colBandCount: keyboardPageUpBackToTopSignatures.signatures.welcomeIntroAfterKeyboardPageUp.colBands.length,
         },
+        scrollbarAfterKeyboardPageUp: {
+          count: keyboardPageUpBackToTopSignatures.signatures.scrollbarAfterKeyboardPageUp.count,
+          hash: keyboardPageUpBackToTopSignatures.signatures.scrollbarAfterKeyboardPageUp.hash,
+          rowBands: keyboardPageUpBackToTopSignatures.signatures.scrollbarAfterKeyboardPageUp.rowBands,
+          colBandCount: keyboardPageUpBackToTopSignatures.signatures.scrollbarAfterKeyboardPageUp.colBands.length,
+        },
       },
       {
         welcomeLogoAfterKeyboardPageUp: { count: 3274, hash: 2837369989, rowBands: [[123, 156, 3274, 364]], colBandCount: 4 },
         welcomeIntroAfterKeyboardPageUp: { count: 8757, hash: 1088269131, rowBands: [[196, 219, 3164, 202], [247, 261, 1996, 294], [268, 282, 1911, 300], [289, 303, 1290, 197], [393, 404, 396, 58]], colBandCount: 43 },
+        scrollbarAfterKeyboardPageUp: { count: 3735, hash: 4246721373, rowBands: [[38, 442, 3596, 18], [444, 461, 139, 16]], colBandCount: 1 },
       },
       `expected deterministic keyboard PageUp restoration of about:welcome top glyph/logo coverage, got ${JSON.stringify(keyboardPageUpBackToTopSignatures)}`,
     );
