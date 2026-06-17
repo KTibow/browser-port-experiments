@@ -1388,6 +1388,98 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(duplicateImeByTypeAndCode.get('composition-keydown:121')?.char, 'y', `expected compositionend fallback to forward y once, got ${JSON.stringify(duplicateImeCommitCoverage)}`);
     assert.equal(duplicateImeByTypeAndCode.get('composition-keyup:121')?.source, 'compositionend', `expected duplicate beforeinput not to add a second y keyup, got ${JSON.stringify(duplicateImeCommitCoverage)}`);
 
+    const beforePlaywrightNativeText = await page.evaluate(() => ({
+      inputEventsForwarded: window.netsurfFramebufferState.inputEventsForwarded,
+      dirtyRectsObserved: window.netsurfFramebufferState.dirtyRectsObserved,
+      address: (() => {
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const data = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        return { black, nonGrey, nonWhite, hash };
+      })(),
+    }));
+    await page.keyboard.insertText('ø');
+    const playwrightNativeTextCoverage = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.inputEventsForwarded < before.inputEventsForwarded + 2 || state.lastInputEvent?.type !== 'beforeinput') return null;
+        const detail = state.lastInputEvent.detail;
+        if (detail?.text !== 'ø' || detail.inputType !== 'insertText') return null;
+        if (state.dirtyRectsObserved <= before.dirtyRectsObserved) return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const data = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const address = { black, nonGrey, nonWhite, hash };
+        const addressChanged = Object.entries(before.address).some(([key, value]) => address[key] !== value);
+        if (!addressChanged) return null;
+        return {
+          before,
+          after: state.inputEventsForwarded,
+          dirtyAfter: state.dirtyRectsObserved,
+          compositionCommit: state.compositionCommit,
+          lastInputEvent: state.lastInputEvent,
+          history: state.inputEventHistory.slice(-8).map(({ type, detail }) => ({ type, detail })),
+          address,
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+          activeElementId: document.activeElement?.id,
+        };
+      },
+      beforePlaywrightNativeText,
+    ).then((handle) => handle.jsonValue());
+    assert.equal(playwrightNativeTextCoverage.activeElementId, 'netsurf-text-input');
+    assert.equal(playwrightNativeTextCoverage.dataset, 'beforeinput');
+    assert.ok(playwrightNativeTextCoverage.after >= beforePlaywrightNativeText.inputEventsForwarded + 2, `expected Playwright high-level browser text insertion to forward key down/up, got ${JSON.stringify(playwrightNativeTextCoverage)}`);
+    assert.ok(playwrightNativeTextCoverage.dirtyAfter > beforePlaywrightNativeText.dirtyRectsObserved, `expected Playwright high-level browser text insertion to preserve dirty-rect advancement, got ${JSON.stringify(playwrightNativeTextCoverage)}`);
+    assert.deepEqual(
+      playwrightNativeTextCoverage.address,
+      { black: 1714, nonGrey: 12610, nonWhite: 4878, hash: 53789304 },
+      `expected Playwright high-level browser-generated insertText to visibly add a deterministic address-bar glyph, got ${JSON.stringify(playwrightNativeTextCoverage)}`,
+    );
+    assert.deepEqual(
+      playwrightNativeTextCoverage.lastInputEvent.detail,
+      { text: 'ø', inputType: 'insertText', isComposing: false, trusted: true, compositionActive: false, forwardedCharacters: 1, duplicateCompositionCommit: false },
+      `expected Playwright high-level browser-generated insertText metadata, got ${JSON.stringify(playwrightNativeTextCoverage)}`,
+    );
+    assert.deepEqual(
+      playwrightNativeTextCoverage.compositionCommit,
+      { text: 'ø', source: 'beforeinput', forwardedCharacters: 1, duplicateBeforeinputSuppressed: false, at: playwrightNativeTextCoverage.compositionCommit.at, trusted: true },
+      `expected Playwright high-level browser-generated insertText to update commit guard metadata, got ${JSON.stringify(playwrightNativeTextCoverage)}`,
+    );
+    assert.ok(Number.isFinite(playwrightNativeTextCoverage.compositionCommit.at), `expected Playwright high-level browser-generated insertText timestamp, got ${JSON.stringify(playwrightNativeTextCoverage)}`);
+    const playwrightNativeByTypeAndCode = new Map(
+      playwrightNativeTextCoverage.history
+        .filter((event) => event.detail && Number.isFinite(event.detail.nsfb))
+        .map((event) => [`${event.type}:${event.detail.nsfb}`, event.detail]),
+    );
+    assert.equal(playwrightNativeByTypeAndCode.get('beforeinput-keydown:248')?.char, 'ø', `expected Playwright high-level insertText keydown mapping, got ${JSON.stringify(playwrightNativeTextCoverage)}`);
+    assert.equal(playwrightNativeByTypeAndCode.get('beforeinput-keyup:248')?.source, 'beforeinput', `expected Playwright high-level insertText keyup mapping, got ${JSON.stringify(playwrightNativeTextCoverage)}`);
+
     const beforeToolbarInputCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsForwarded);
     await clickNetSurfCanvasPixel(canvasLocator, 75, 15);
     const toolbarActivation = await page.waitForFunction(
