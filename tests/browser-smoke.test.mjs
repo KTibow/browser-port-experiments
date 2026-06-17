@@ -2321,7 +2321,46 @@ test('NetSurf about:welcome top navigation links expose distinct hover targets a
       `expected top navigation hover to preserve the visible nslinks raster band, got ${JSON.stringify(downloadsHover)}`,
     );
 
-    const beforeHomeActivationCount = downloadsHover.inputEventsForwarded;
+    const beforeDocsActivationCount = downloadsHover.inputEventsForwarded;
+    await clickNetSurfCanvasPixel(canvasLocator, 320, 138);
+    const docsActivation = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+        },
+        address: {
+          region: { x: 95, y: 3, width: 520, height: 28 },
+          metrics: { black: 1503, nonGrey: 12610, nonWhite: 4649, hash: 1458272501 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 1808, nonGrey: 268532, nonWhite: 135133, hash: 4161839195 },
+        },
+        topNavigation: {
+          region: { x: 0, y: 120, width: 640, height: 42 },
+          metrics: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+        },
+      },
+      downloadsHover.dirtyRectsObserved,
+    );
+    assert.equal(docsActivation.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(docsActivation.lastInputEvent.detail, { button: 0 });
+    assert.ok(docsActivation.inputEventsForwarded >= beforeDocsActivationCount + 3, `expected top navigation documentation activation click forwarding, got ${JSON.stringify(docsActivation)}`);
+    assert.equal(docsActivation.inputEventsDropped, 0, `expected no dropped input events through top navigation documentation activation, got ${JSON.stringify(docsActivation)}`);
+    assert.deepEqual(
+      docsActivation.metrics,
+      {
+        status: { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+        address: { black: 1503, nonGrey: 12610, nonWhite: 4649, hash: 1458272501 },
+        content: { black: 1808, nonGrey: 268532, nonWhite: 135133, hash: 4161839195 },
+        topNavigation: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
+      },
+      `expected top navigation documentation activation to visibly redraw offline status while preserving address/content/nav rasters, got ${JSON.stringify(docsActivation)}`,
+    );
+
+    const beforeHomeActivationCount = docsActivation.inputEventsForwarded;
     await clickNetSurfCanvasPixel(canvasLocator, 80, 138);
     const homeActivation = await waitForNetSurfRegionMetrics(
       page,
@@ -2343,7 +2382,7 @@ test('NetSurf about:welcome top navigation links expose distinct hover targets a
           metrics: { black: 0, nonGrey: 26376, nonWhite: 26258, hash: 1424795764 },
         },
       },
-      downloadsHover.dirtyRectsObserved,
+      docsActivation.dirtyRectsObserved,
     );
     assert.equal(homeActivation.lastInputEvent.type, 'pointerup-button');
     assert.deepEqual(homeActivation.lastInputEvent.detail, { button: 0 });
