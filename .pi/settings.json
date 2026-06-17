@@ -1,0 +1,13 @@
+{
+  "defaultProvider": "palantir",
+  "defaultModel": "claude-opus-4-8",
+  "retry": {
+    "enabled": true,
+    "maxRetries": 20,
+    "baseDelayMs": 65000,
+    "provider": {
+      "maxRetries": 20,
+      "maxRetryDelayMs": 0
+    }
+  }
+}
