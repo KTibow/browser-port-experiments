@@ -78,7 +78,18 @@ code {
 .card__engine { color: var(--accent); font-size: 0.92rem; font-weight: 500; }
 .card__era { color: var(--muted); font-weight: 400; }
 .card__blurb { color: var(--muted); font-size: 0.92rem; margin: 0.1rem 0 0.3rem; flex: 1; }
+.card__foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .card__go { color: var(--fg); font-weight: 600; font-size: 0.92rem; }
+.card__dl {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: #00000038;
+  border: 1px solid var(--line);
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
 
 .badge {
   font-size: 0.7rem;
@@ -129,6 +140,7 @@ body.runner {
 .bar__title { display: flex; flex-direction: column; line-height: 1.15; }
 .bar__title #title { font-weight: 650; }
 .bar__engine { color: var(--accent); font-size: 0.8rem; }
+.bar__dl { color: var(--muted); font-size: 0.74rem; cursor: help; }
 .bar__status {
   display: flex;
   flex-direction: column;

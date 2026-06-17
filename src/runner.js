@@ -4,6 +4,7 @@
 //   cdn       - override image CDN host (default from registry)
 //   relay_url - override Wisp relay (default from registry, wisps://anura.pro/)
 import { V86 } from "./vendor/libv86.mjs";
+import { formatDownload } from "./download-format.mjs";
 
 const qs = new URLSearchParams(location.search);
 const osId = qs.get("os");
@@ -148,6 +149,17 @@ async function main() {
   document.title = `${entry.name} \u2014 Browser Port Experiments`;
   titleEl.textContent = entry.name;
   engineEl.textContent = entry.engine;
+
+  // Up-front download-size hint: tell visitors the data commitment *before* a
+  // big image starts streaming (e.g. Android is ~236 MB).
+  const dlEl = document.getElementById("dlsize");
+  const dl = formatDownload(entry);
+  if (dlEl && dl) {
+    dlEl.textContent = dl.chip;
+    dlEl.title = dl.title;
+    dlEl.setAttribute("aria-label", dl.title);
+    dlEl.hidden = false;
+  }
 
   // Touch / coarse-pointer device? (mobile, tablet). Drives the touch help text.
   const isTouch = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches)

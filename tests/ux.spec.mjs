@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { formatDownload } from "../src/download-format.mjs";
 
 // UX polish (Task 6): the loading progress bar and the Wisp relay picker.
 // These are deterministic and offline (the progress-bar test never boots a VM;
@@ -38,6 +39,40 @@ test("loading progress bar fills from download events @ux", async ({ page }) => 
     window.__onDownloadProgress({ file_name: "blob.bin", loaded: 1_234_567, total: 0 })
   );
   await expect(page.locator("#progress_bar")).toHaveClass(/is-indeterminate/);
+});
+
+// Up-front download-size hint (Task 6): every landing card shows the data
+// commitment as a chip, and the runner bar shows it before any image streams.
+// Deterministic + offline (no VM boots).
+test("landing cards show the up-front download size for each browser @ux", async ({ page }) => {
+  const registry = JSON.parse(await readFile(new URL("../browsers.json", import.meta.url)));
+  await page.goto("/");
+
+  for (const b of registry.browsers) {
+    const dl = formatDownload(b);
+    expect(dl, `${b.id} should have a download hint`).not.toBeNull();
+    const chip = page.locator(`a.card[href="run.html?os=${b.id}"] .card__dl`);
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveText(dl.short);
+    await expect(chip).toHaveAttribute("title", dl.title);
+  }
+
+  // The big Android stream is explicitly flagged as ~236 MB with a streamed note.
+  const android = page.locator('a.card[href="run.html?os=android4"] .card__dl');
+  await expect(android).toHaveText(/~236 MB/);
+  await expect(android).toHaveAttribute("title", /Streams .* on demand/);
+});
+
+test("runner bar shows the download-size note before booting @ux", async ({ page }) => {
+  const registry = JSON.parse(await readFile(new URL("../browsers.json", import.meta.url)));
+  const android = registry.browsers.find((b) => b.id === "android4");
+  const dl = formatDownload(android);
+
+  await page.goto("/run.html?os=android4", { waitUntil: "domcontentloaded" });
+  const note = page.locator("#dlsize");
+  await expect(note).toBeVisible();
+  await expect(note).toHaveText(dl.chip); // "↓ ~236 MB streamed"
+  await expect(note).toHaveAttribute("title", dl.title);
 });
 
 test("relay picker lists verified relays and defaults to anura.pro @ux", async ({ page }) => {

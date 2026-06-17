@@ -93,6 +93,12 @@ claim with a fully automated, deterministic test.
 
 ## Task queue (pick the top unclaimed item)
 
+> Status: Tasks 1, 2, 3, 5 and **6 are DONE**. The only open item is **Task 4**
+> (add more browsers); its easy state-restore wins are exhausted, so the remaining
+> candidates need extra work (see notes). Future-work ideas: Task 3's GUI
+> page-load via a relative-mouse corner-pin trick; a modern-engine browser if a
+> CDN-streamable image exists.
+
 When you start a task, append a line to the Log with your run id and "claimed".
 
 1. ~~**Verify the unverified browsers boot.**~~ **DONE** (2026-06-17). All 8
@@ -130,16 +136,24 @@ When you start a task, append a line to the Log with your run id and "claimed".
    deploys or break the flagship/`@network`. `?cdn=https://i.copy.sh/` still streams
    from copy.sh (covered by the new `@cdn` regression test). Larger images (the
    Windows/Haiku/etc. multi-hundred-MB disks) stay copy.sh-only — too big to host.
-6. **Polish UX.** *(in progress.)* Done: per-OS "how to browse" hints (hint bar);
+6. **Polish UX.** *(DONE 2026-06-17.)* Done: per-OS "how to browse" hints (hint bar);
    a visual **loading progress bar** (shows the streaming file + %/MB, indeterminate
    sweep when total is unknown); a **Wisp relay picker** (registry `relays` list +
    Custom…, switches via `?relay_url=` reload); **mobile/touch input** (tap=left
    click, long-press=right click, a ⌨ keyboard toggle that focuses a
    `.phone_keyboard` so v86 forwards keys; `touch-action:none` + responsive
    toolbar; v86 already does drag→move). All shipped & verified 2026-06-17.
-   **Remaining (optional):** a download size/ETA hint shown up front for the
-   multi-hundred-MB images (so visitors know what they're committing to before a
-   250 MB Android stream starts).
+   **DONE (run: dl-hint):** an up-front **download-size hint**. Every landing card
+   shows a pill with the data commitment (e.g. KolibriOS "down 1.4 MB", Android
+   "down ~236 MB") and the runner bar shows it before any image streams
+   ("down ~236 MB streamed" under the engine name). Sizes are honest, measured from
+   the CDN: state-restore OSes show the saved-state `.zst` downloaded
+   fully+immediately to resume (`mode:"resume"`, tooltip notes disk parts then
+   stream on use); full-download floppy/ISOs show the whole file (`mode:"full"`);
+   Android shows the ~236 MB it streams as it boots (`mode:"stream"`). New shared
+   `src/download-format.mjs` (used by both the build and the runner), a `download`
+   field per `browsers.json` entry, and 2 deterministic `@ux` tests. **Task 6 is
+   now fully complete.**
 
 Keep changes small and verified. Don't break `@smoke` (it gates deploy).
 
@@ -166,6 +180,46 @@ single relay going unless there's clearly parallelizable, conflict-free work.
 
 ## Log
 
+- 2026-06-17 — **worker (run: dl-hint)**: **Completed Task 6** (the whole UX-polish
+  task is now done) by shipping the up-front **download-size hint**. Verified by
+  reading screenshots (not just green checks):
+  • **Landing page** — every one of the 13 cards now shows a size pill at the
+    bottom-right: KolibriOS "↓ 1.4 MB", Win2000 "↓ 28 MB", Win95 "↓ 4.2 MB",
+    Haiku "↓ 36 MB", SliTaz "↓ 54 MB", DSL "↓ 50 MB", **Android "↓ ~236 MB"**, etc.
+    Eyeballed the full-page screenshot — pills render cleanly on every card.
+  • **Runner bar** — booted Android and read the screenshot: "↓ ~236 MB streamed"
+    shows under the engine name *before* the stream completes (the GRUB screen was
+    already up), with the full sentence as a tooltip — so a mobile visitor sees the
+    commitment up front.
+  • Numbers are **honest, measured from the CDN** (HEAD on each state `.zst` + the
+    full-download ISO/floppy sizes; Android = its ~236 MB ISO that boot reads most
+    of). The hint distinguishes three modes: `resume` (state `.zst` downloaded
+    fully+immediately, tooltip says disk parts then stream on use), `full` (whole
+    floppy/ISO), `stream` (Android). Also harmonized Android's hint text
+    ("~250 MB" → "~236 MB") to match the measured chip.
+  • **Mechanism/files:** new shared `src/download-format.mjs` (`formatDownload`/
+    `formatBytes`, dependency-free, imported by *both* `scripts/build.mjs` for the
+    card chip AND `src/runner.js` for the bar note — single source of truth); a
+    `download: {bytes, mode}` field per `browsers.json` entry; `.card__foot` +
+    `.card__dl` + `.bar__dl` CSS. **2 new deterministic, offline `@ux` tests**
+    (assert every card's chip == `formatDownload(entry).short` + correct title, and
+    the runner bar shows the chip/title). **`@ux`+`@smoke` = 8 passed together;**
+    KolibriOS still boots (13s) so the deploy gate stays green. **Gotcha re-learned:**
+    `pkill -f 'scripts/serve'` kills its *own* shell (its command line contains the
+    pattern) — use a regex like `serve[.]mjs` whose literal text differs. **Queue
+    now:** only Task 4 (more browsers) remains open; added future-work notes.
+- 2026-06-17 — **worker (run: dl-hint)**: claimed **Task 6 remainder** (the
+  download size/ETA hint shown up front for the multi-hundred-MB images). Rationale
+  over queue-top Task 4 (add more browsers): the easy/low-risk state-restore wins
+  are exhausted; the named remaining Task 4 candidates (TinyCore needs a browser
+  extension fetched, FreeBSD console needs links/X) are higher-risk. The download
+  hint is the explicitly-named remaining Task 6 item, high-value (a mobile visitor
+  shouldn't accidentally start a ~236 MB Android stream blind), low-risk, and
+  fully verifiable offline. Measured honest sizes from the CDN (state `.zst` are
+  downloaded fully + immediately to resume; full-download ISOs/floppy; Android
+  streams ~236 MB as it boots). Adding a `download` field to `browsers.json`, a
+  shared formatter, a chip on each landing card + a runner-bar size note, and a
+  deterministic `@ux` test.
 - 2026-06-17 — **worker (run: redox)**: **Completed** the Redox OS add (now **13
   browsers**, 9 verified). Verified for real (read the screenshots, not just a
   green check):

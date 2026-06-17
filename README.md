@@ -53,10 +53,13 @@ scripts/build.mjs ── assembles dist/ and generates index.html from the regis
 Networking path: guest NIC → v86 (handles DHCP/DNS-over-HTTPS/ARP locally, wraps
 TCP in Wisp) → `wss://anura.pro` → the real internet.
 
-The runner also shows a **loading progress bar** while the OS image / saved state
-streams in (helpful for the multi-hundred-MB images), and a **Wisp relay picker**
-so you can switch relays (default `anura.pro`, plus `wisp.mercurywork.shop` or a
-custom one) if the default is blocked — it reloads with `?relay_url=`.
+Every landing card shows an **up-front download-size hint** (e.g. KolibriOS
+“↓ 1.4 MB”, Android “↓ ~236 MB”) so you know the data commitment before launching;
+the runner repeats it in the toolbar before any image streams. The runner also
+shows a **loading progress bar** while the OS image / saved state streams in
+(helpful for the multi-hundred-MB images), and a **Wisp relay picker** so you can
+switch relays (default `anura.pro`, plus `wisp.mercurywork.shop` or a custom one)
+if the default is blocked — it reloads with `?relay_url=`.
 
 It's also **usable on touch devices**: drag to move the guest cursor (trackpad
 style), **tap to left-click**, **long-press to right-click**, and tap the
@@ -103,7 +106,8 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
   Linux with a static `links` text browser overlaid via an initrd, then
   `links -dump`s example.com over both HTTP and HTTPS and asserts on the
   *rendered* (tag-free) text
-- `@ux` — the loading progress bar and the Wisp relay picker (offline/deterministic)
+- `@ux` — the loading progress bar, the Wisp relay picker, and the up-front
+  download-size hint on the landing cards + runner bar (offline/deterministic)
 - `@touch` — mobile/touch input: tap = click, long-press = right-click, drag =
   move, and the on-screen keyboard forwards keys (boots KolibriOS, asserts on the
   v86 input bus)

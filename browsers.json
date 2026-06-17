@@ -1,5 +1,5 @@
 {
-  "$comment": "Registry of browsers/OSes ported to the web via v86 (WASM CPU + canvas + Wisp networking). Image URLs are relative to the CDN host (default https://i.copy.sh/, overridable with ?cdn=). The `config` object mirrors v86 constructor options; the runner prepends the CDN host to every disk/state `url`. An image may also carry a `mirror` path (resilience: a same-origin copy under dist/mirror/); the runner prefers it unless a `?cdn=` is forced.",
+  "$comment": "Registry of browsers/OSes ported to the web via v86 (WASM CPU + canvas + Wisp networking). Image URLs are relative to the CDN host (default https://i.copy.sh/, overridable with ?cdn=). The `config` object mirrors v86 constructor options; the runner prepends the CDN host to every disk/state `url`. An image may also carry a `mirror` path (resilience: a same-origin copy under dist/mirror/); the runner prefers it unless a `?cdn=` is forced. Each entry also carries a `download` hint ({bytes, mode}) used to show the up-front data commitment on the landing card + runner bar; mode is full (whole image downloaded), resume (a saved-state .zst downloaded fully to resume, then disk parts stream on use), or stream (image streams on demand as it boots). See src/download-format.mjs.",
   "cdn": "https://i.copy.sh/",
   "relay": "wisps://anura.pro/",
   "$relays_comment": "Wisp relays offered in the runner's relay picker (first = default). Each was verified to speak Wisp (sends the v1 CONTINUE handshake frame on connect). The runner also offers a Custom… option. v86 maps wisps:// → wss://.",
@@ -10,6 +10,7 @@
   "browsers": [
     {
       "id": "kolibrios",
+      "download": { "bytes": 1474560, "mode": "full" },
       "name": "KolibriOS",
       "engine": "WebView",
       "era": "2004 - present",
@@ -25,6 +26,7 @@
     },
     {
       "id": "windows2000",
+      "download": { "bytes": 29621987, "mode": "resume" },
       "name": "Windows 2000",
       "engine": "Internet Explorer 5 (Trident / MSHTML)",
       "era": "2000",
@@ -42,6 +44,7 @@
     },
     {
       "id": "windows95",
+      "download": { "bytes": 4432144, "mode": "resume" },
       "name": "Windows 95",
       "engine": "Internet Explorer (Trident / MSHTML)",
       "era": "1995",
@@ -59,6 +62,7 @@
     },
     {
       "id": "windows98",
+      "download": { "bytes": 13434587, "mode": "resume" },
       "name": "Windows 98",
       "engine": "Internet Explorer (Trident / MSHTML)",
       "era": "1998",
@@ -76,6 +80,7 @@
     },
     {
       "id": "windowsme",
+      "download": { "bytes": 28999225, "mode": "resume" },
       "name": "Windows ME",
       "engine": "Internet Explorer (Trident / MSHTML)",
       "era": "2000",
@@ -92,6 +97,7 @@
     },
     {
       "id": "haiku",
+      "download": { "bytes": 38222303, "mode": "resume" },
       "name": "Haiku",
       "engine": "WebPositive (WebKit)",
       "era": "2009 - present",
@@ -109,6 +115,7 @@
     },
     {
       "id": "reactos",
+      "download": { "bytes": 18317954, "mode": "resume" },
       "name": "ReactOS",
       "engine": "Internet Explorer-compatible shell",
       "era": "1998 - present",
@@ -127,6 +134,7 @@
     },
     {
       "id": "serenityos",
+      "download": { "bytes": 16990825, "mode": "resume" },
       "name": "SerenityOS",
       "engine": "Ladybird (LibWeb)",
       "era": "2018 - present",
@@ -144,6 +152,7 @@
     },
     {
       "id": "9front",
+      "download": { "bytes": 5489508, "mode": "resume" },
       "name": "9front",
       "engine": "Mothra / NetSurf",
       "era": "2011 - present",
@@ -161,6 +170,7 @@
     },
     {
       "id": "redox",
+      "download": { "bytes": 16544923, "mode": "resume" },
       "name": "Redox OS",
       "engine": "NetSurf",
       "era": "2015 - present",
@@ -179,6 +189,7 @@
     },
     {
       "id": "slitaz",
+      "download": { "bytes": 56573952, "mode": "full" },
       "name": "SliTaz GNU/Linux",
       "engine": "Midori / TazWeb (WebKitGTK)",
       "era": "2024 (rolling)",
@@ -194,11 +205,12 @@
     },
     {
       "id": "android4",
+      "download": { "bytes": 247463936, "mode": "stream" },
       "name": "Android 4.4 (KitKat)",
       "engine": "AOSP Browser (WebKit)",
       "era": "2013",
       "blurb": "Android-x86 4.4 'KitKat' running the stock AOSP Browser, a WebKit-based engine. Android is one of the most widely used platforms in the world; here it runs entirely in your tab. Networked through Wisp.",
-      "hint": "Patience: it streams ~250 MB and the full Android boot takes ~4-5 minutes in software emulation. When the home screen appears, dismiss the welcome card and open the Browser app.",
+      "hint": "Patience: it streams ~236 MB and the full Android boot takes ~4-5 minutes in software emulation. When the home screen appears, dismiss the welcome card and open the Browser app.",
       "highlight": false,
       "tested": "boots",
       "config": {
@@ -209,6 +221,7 @@
     },
     {
       "id": "dsl",
+      "download": { "bytes": 52824064, "mode": "full" },
       "name": "Damn Small Linux",
       "engine": "Dillo + Mozilla Firefox",
       "era": "2003",

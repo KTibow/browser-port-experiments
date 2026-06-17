@@ -6,6 +6,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { formatDownload } from "../src/download-format.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
@@ -100,6 +101,10 @@ const TESTED_LABELS = {
 function cardHtml(b) {
   const tag = TESTED_LABELS[b.tested] || TESTED_LABELS.pending;
   const hi = b.highlight ? " card--highlight" : "";
+  const dl = formatDownload(b);
+  const dlHtml = dl
+    ? `<span class="card__dl" title="${esc(dl.title)}">${esc(dl.short)}</span>`
+    : "";
   return `      <a class="card${hi}" href="run.html?os=${encodeURIComponent(b.id)}">
         <div class="card__top">
           <span class="card__name">${esc(b.name)}</span>
@@ -107,7 +112,10 @@ function cardHtml(b) {
         </div>
         <div class="card__engine">${esc(b.engine)} <span class="card__era">${esc(b.era)}</span></div>
         <p class="card__blurb">${esc(b.blurb)}</p>
-        <span class="card__go">Launch &rarr;</span>
+        <div class="card__foot">
+          <span class="card__go">Launch &rarr;</span>
+          ${dlHtml}
+        </div>
       </a>`;
 }
 
