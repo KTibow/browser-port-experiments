@@ -1549,6 +1549,102 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(pageUpInput.type, 'keyup');
     assert.equal(pageUpInput.detail.key, 'PageUp');
     assert.equal(pageUpInput.detail.nsfb, 280);
+
+    const dispatchSyntheticKeyBatch = async (events) => page.evaluate((batch) => {
+      const canvas = document.querySelector('#viewport');
+      canvas.focus();
+      const state = window.netsurfFramebufferState;
+      const before = state.inputEventsForwarded;
+      for (const event of batch) {
+        const common = {
+          key: event.key,
+          code: event.code,
+          location: event.location || 0,
+          bubbles: true,
+          cancelable: true,
+          altKey: Boolean(event.altKey),
+          ctrlKey: Boolean(event.ctrlKey),
+          metaKey: Boolean(event.metaKey),
+          shiftKey: Boolean(event.shiftKey),
+        };
+        canvas.dispatchEvent(new KeyboardEvent('keydown', common));
+        canvas.dispatchEvent(new KeyboardEvent('keyup', { ...common, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false }));
+      }
+      return {
+        before,
+        after: state.inputEventsForwarded,
+        history: state.inputEventHistory.slice(-(batch.length * 2)).map(({ type, detail }) => ({ type, detail })),
+      };
+    }, events);
+
+    const assertSyntheticKeyBatch = (coverage, expectedEvents) => {
+      assert.equal(
+        coverage.after,
+        coverage.before + expectedEvents.length * 2,
+        `expected all synthetic alternate keycodes to forward keydown/keyup pairs, got ${JSON.stringify(coverage)}`,
+      );
+      const byCode = new Map(
+        coverage.history
+          .filter((event) => event.type === 'keydown' && event.detail && Number.isFinite(event.detail.nsfb))
+          .map((event) => [event.detail.code || event.detail.key, event.detail]),
+      );
+      for (const expectedEvent of expectedEvents) {
+        const detail = byCode.get(expectedEvent.code || expectedEvent.key);
+        assert.equal(detail?.nsfb, expectedEvent.nsfb, `expected ${expectedEvent.code || expectedEvent.key} to map to nsfb ${expectedEvent.nsfb}, got ${JSON.stringify(coverage)}`);
+        assert.equal(detail?.location || 0, expectedEvent.location || 0, `expected ${expectedEvent.code || expectedEvent.key} to preserve KeyboardEvent.location, got ${JSON.stringify(coverage)}`);
+        if (expectedEvent.altKey) assert.equal(detail.modifiers.alt, true, `expected alt modifier metadata for ${expectedEvent.code}, got ${JSON.stringify(coverage)}`);
+        if (expectedEvent.ctrlKey) assert.equal(detail.modifiers.ctrl, true, `expected ctrl modifier metadata for ${expectedEvent.code}, got ${JSON.stringify(coverage)}`);
+        if (expectedEvent.metaKey) assert.equal(detail.modifiers.meta, true, `expected meta modifier metadata for ${expectedEvent.code}, got ${JSON.stringify(coverage)}`);
+        if (expectedEvent.shiftKey) assert.equal(detail.modifiers.shift, true, `expected shift modifier metadata for ${expectedEvent.code}, got ${JSON.stringify(coverage)}`);
+      }
+    };
+
+    const namedKeyCoverageEvents = [
+      { key: 'Backspace', code: 'Backspace', nsfb: 8 },
+      { key: 'Tab', code: 'Tab', nsfb: 9 },
+      { key: 'Enter', code: 'Enter', nsfb: 13 },
+      { key: 'Escape', code: 'Escape', nsfb: 27 },
+      { key: 'Delete', code: 'Delete', nsfb: 127 },
+      { key: 'ArrowUp', code: 'ArrowUp', nsfb: 273 },
+      { key: 'ArrowDown', code: 'ArrowDown', nsfb: 274 },
+      { key: 'ArrowRight', code: 'ArrowRight', nsfb: 275 },
+      { key: 'ArrowLeft', code: 'ArrowLeft', nsfb: 276 },
+      { key: 'Insert', code: 'Insert', nsfb: 277 },
+      { key: 'Home', code: 'Home', nsfb: 278 },
+      { key: 'End', code: 'End', nsfb: 279 },
+      { key: 'PageUp', code: 'PageUp', nsfb: 280 },
+      { key: 'Shift', code: 'ShiftLeft', nsfb: 304, shiftKey: true },
+      { key: 'Shift', code: 'ShiftRight', location: 2, nsfb: 303, shiftKey: true },
+      { key: 'Control', code: 'ControlLeft', nsfb: 306, ctrlKey: true },
+      { key: 'Alt', code: 'AltLeft', nsfb: 308, altKey: true },
+      { key: 'Alt', code: 'AltRight', location: 2, nsfb: 307, altKey: true },
+    ];
+    assertSyntheticKeyBatch(await dispatchSyntheticKeyBatch(namedKeyCoverageEvents), namedKeyCoverageEvents);
+
+    const systemFunctionNumpadCoverageEvents = [
+      { key: 'Meta', code: 'MetaLeft', nsfb: 310, metaKey: true },
+      { key: 'Meta', code: 'MetaRight', location: 2, nsfb: 309, metaKey: true },
+      { key: 'CapsLock', code: 'CapsLock', nsfb: 301 },
+      { key: 'NumLock', code: 'NumLock', nsfb: 300 },
+      { key: 'ScrollLock', code: 'ScrollLock', nsfb: 302 },
+      { key: 'Pause', code: 'Pause', nsfb: 19 },
+      { key: 'PrintScreen', code: 'PrintScreen', nsfb: 316 },
+      { key: 'ContextMenu', code: 'ContextMenu', nsfb: 319 },
+      { key: 'F1', code: 'F1', nsfb: 282 },
+      { key: 'F12', code: 'F12', nsfb: 293 },
+      { key: '0', code: 'Numpad0', location: 3, nsfb: 256 },
+      { key: '9', code: 'Numpad9', location: 3, nsfb: 265 },
+      { key: '.', code: 'NumpadDecimal', location: 3, nsfb: 266 },
+      { key: 'Enter', code: 'NumpadEnter', location: 3, nsfb: 271 },
+      { key: '/', code: 'NumpadDivide', location: 3, nsfb: 267 },
+      { key: '*', code: 'NumpadMultiply', location: 3, nsfb: 268 },
+      { key: '-', code: 'NumpadSubtract', location: 3, nsfb: 269 },
+      { key: '+', code: 'NumpadAdd', location: 3, nsfb: 270 },
+    ];
+    assertSyntheticKeyBatch(
+      await dispatchSyntheticKeyBatch(systemFunctionNumpadCoverageEvents),
+      systemFunctionNumpadCoverageEvents,
+    );
   } finally {
     await closePage(page);
   }
