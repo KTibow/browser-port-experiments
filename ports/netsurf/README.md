@@ -112,11 +112,11 @@ ports/netsurf/scripts/verify-artifact.sh
 npm test
 ```
 
-The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, probes embedded `/netsurf` resources for English `Messages` and `about:welcome` text, asserts the startup log has no missing translation/resource messages, samples deterministic NetSurf chrome/content pixels, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
+The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, probes embedded `/netsurf` resources for English `Messages` and `about:welcome` text, asserts deterministic raster glyph signatures for the visible toolbar/address chrome and the `about:welcome` heading/body line bands, asserts the startup log has no missing translation/resource messages, samples deterministic NetSurf chrome/content pixels, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
 
 ## Suggested next steps
 
-1. Improve visible about-page/chrome assertions beyond the current embedded-resource text probe and pixel smoke (for example, deterministic text-region raster hashes or OCR-like glyph sampling for `about:welcome`).
+1. Expand visible raster assertions to more chrome/about regions (for example blue link glyphs, icon bitmaps, and scroll-dependent text) beyond the current deterministic toolbar/address/heading/body glyph signatures.
 2. Expand canvas input coverage (IME/text input, modifier state, more keycodes) and identify additional deterministic UI interactions beyond the current click/wheel/key/cursor metadata coverage.
 3. Re-enable PNG/JPEG via Emscripten ports or vendored libraries after the dirty-rect path remains stable.
 4. Design a Wisp-backed fetcher before re-enabling HTTP(S); do not bake `wss://anura.pro/` into C code.
