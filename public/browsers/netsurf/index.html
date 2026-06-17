@@ -10,6 +10,7 @@
       main { max-width: 1040px; margin: 0 auto; padding: 24px; }
       a { color: #67e8f9; }
       canvas { display: block; width: 100%; max-width: 960px; height: auto; image-rendering: pixelated; background: #05070a; border: 1px solid #2b3342; border-radius: 10px; box-shadow: 0 18px 60px #0007; }
+      .text-input-proxy { position: fixed; left: -1000px; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; resize: none; }
       pre { min-height: 7rem; padding: 16px; overflow: auto; background: #05070a; border: 1px solid #2b3342; border-radius: 10px; white-space: pre-wrap; }
       code { background: #020617; border-radius: 8px; padding: 0.1rem 0.3rem; }
       .note { color: #b8c0cc; line-height: 1.45; }
@@ -40,7 +41,8 @@
         <p id="status" class="note">Loading nsfb.js…</p>
       </section>
       <canvas id="viewport" width="640" height="480" tabindex="0" aria-label="NetSurf framebuffer pixels"></canvas>
-      <p class="note">Click the canvas to focus it. Pointer movement, mouse buttons, wheel events, and mapped keyboard keys are forwarded into the NetSurf framebuffer input queue.</p>
+      <textarea id="netsurf-text-input" class="text-input-proxy" tabindex="-1" autocomplete="off" autocapitalize="off" spellcheck="false" aria-hidden="true"></textarea>
+      <p class="note">Click the canvas to focus it. Pointer movement, mouse buttons, wheel events, mapped keyboard keys, and browser-generated text <code>beforeinput</code> are forwarded into the NetSurf framebuffer input queue.</p>
       <section class="panel">
         <h2>Framebuffer bridge</h2>
         <dl id="metadata" class="kv" aria-live="polite">
@@ -56,6 +58,7 @@
     <script src="./nsfb.js"></script>
     <script>
       const canvas = document.querySelector('#viewport');
+      const textInputProxy = document.querySelector('#netsurf-text-input');
       const status = document.querySelector('#status');
       const log = document.querySelector('#log');
       const metadata = document.querySelector('#metadata');
@@ -80,7 +83,7 @@
         inputEventsForwarded: 0,
         lastInputEvent: null,
         inputEventHistory: [],
-        keyboardLayout: 'SDL/libnsfb keycode subset plus printable Latin-1, numpad, modifier, navigation, function-key, and IME composition fallbacks',
+        keyboardLayout: 'SDL/libnsfb keycode subset plus printable Latin-1, numpad, modifier, navigation, function-key, browser beforeinput text, and IME composition fallbacks',
         cursor: null,
         dirtyRectCallbacksObserved: 0,
         dirtyRectsObserved: 0,
@@ -317,7 +320,26 @@
           }
           if (framebufferState.inputEventsForwarded < 8 || framebufferState.inputEventsForwarded % 20 === 0) renderMetadata();
         };
+        const forwardTextCharacters = (text, source, eventTypePrefix) => {
+          let forwardedCharacters = 0;
+          for (const [index, char] of Array.from(text).entries()) {
+            const code = char.codePointAt(0);
+            if (!code || code > 255) continue;
+            const detail = { text, char, index, nsfb: code, source };
+            forwarded(pushKey(1, code), `${eventTypePrefix}-keydown`, detail);
+            if (pushKey(0, code)) {
+              forwardedCharacters += 1;
+              forwarded(1, `${eventTypePrefix}-keyup`, detail);
+            }
+          }
+          return forwardedCharacters;
+        };
+        const focusTextInputProxy = () => {
+          textInputProxy.focus({ preventScroll: true });
+        };
+        const keyboardTargets = [canvas, textInputProxy];
 
+        canvas.addEventListener('focus', focusTextInputProxy);
         canvas.addEventListener('contextmenu', (event) => event.preventDefault());
         canvas.addEventListener('pointermove', (event) => {
           const { x, y } = canvasPosition(event);
@@ -325,7 +347,7 @@
         });
         canvas.addEventListener('pointerdown', (event) => {
           event.preventDefault();
-          canvas.focus();
+          focusTextInputProxy();
           canvas.setPointerCapture?.(event.pointerId);
           const { x, y } = canvasPosition(event);
           forwarded(pushMotion(x, y), 'pointerdown-motion', { x, y, pointerType: event.pointerType });
@@ -347,33 +369,42 @@
           forwarded(pushKey(1, wheelCode), 'wheel-keydown', { deltaY: event.deltaY, code: wheelCode });
           forwarded(pushKey(0, wheelCode), 'wheel-keyup', { deltaY: event.deltaY, code: wheelCode });
         }, { passive: false });
-        canvas.addEventListener('keydown', (event) => {
-          const code = keyCodeFromEvent(event);
-          if (!code) return;
-          event.preventDefault();
-          forwarded(pushKey(1, code), 'keydown', keyEventDetail(event, code));
-        });
-        canvas.addEventListener('keyup', (event) => {
-          const code = keyCodeFromEvent(event);
-          if (!code) return;
-          event.preventDefault();
-          forwarded(pushKey(0, code), 'keyup', keyEventDetail(event, code));
-        });
-        canvas.addEventListener('compositionend', (event) => {
+        for (const target of keyboardTargets) {
+          target.addEventListener('keydown', (event) => {
+            const code = keyCodeFromEvent(event);
+            if (!code) return;
+            event.preventDefault();
+            forwarded(pushKey(1, code), 'keydown', keyEventDetail(event, code));
+          });
+          target.addEventListener('keyup', (event) => {
+            const code = keyCodeFromEvent(event);
+            if (!code) return;
+            event.preventDefault();
+            forwarded(pushKey(0, code), 'keyup', keyEventDetail(event, code));
+          });
+          target.addEventListener('compositionend', (event) => {
+            const text = event.data || '';
+            const forwardedCharacters = forwardTextCharacters(text, 'compositionend', 'composition');
+            rememberInput('compositionend', { text, forwardedCharacters });
+            renderMetadata();
+          });
+        }
+        textInputProxy.addEventListener('beforeinput', (event) => {
           const text = event.data || '';
-          let forwardedCharacters = 0;
-          for (const [index, char] of Array.from(text).entries()) {
-            const code = char.codePointAt(0);
-            if (!code || code > 255) continue;
-            const detail = { text, char, index, nsfb: code, source: 'compositionend' };
-            forwarded(pushKey(1, code), 'composition-keydown', detail);
-            if (pushKey(0, code)) {
-              forwardedCharacters += 1;
-              forwarded(1, 'composition-keyup', detail);
-            }
-          }
-          rememberInput('compositionend', { text, forwardedCharacters });
+          if (event.cancelable) event.preventDefault();
+          const forwardedCharacters = forwardTextCharacters(text, 'beforeinput', 'beforeinput');
+          rememberInput('beforeinput', {
+            text,
+            inputType: event.inputType,
+            isComposing: event.isComposing,
+            trusted: event.isTrusted,
+            forwardedCharacters,
+          });
+          textInputProxy.value = '';
           renderMetadata();
+        });
+        textInputProxy.addEventListener('input', () => {
+          textInputProxy.value = '';
         });
       }
 

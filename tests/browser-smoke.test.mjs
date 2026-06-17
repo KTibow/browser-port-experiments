@@ -611,6 +611,39 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(addressKeyForwarding.dataset, 'keyup');
     assert.ok(addressKeyForwarding.cursor.rect.length === 4, `expected NetSurf to report cursor metadata after address-bar typing, got ${JSON.stringify(addressKeyForwarding)}`);
 
+    const beforeBrowserTextInputCount = addressKeyForwarding.after;
+    await page.keyboard.type('é');
+    const browserBeforeInputCoverage = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.inputEventsForwarded < before + 2 || state.lastInputEvent?.type !== 'beforeinput') return null;
+        return {
+          before,
+          after: state.inputEventsForwarded,
+          activeElementId: document.activeElement?.id,
+          lastInputEvent: state.lastInputEvent,
+          history: state.inputEventHistory.slice(-6).map(({ type, detail }) => ({ type, detail })),
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+        };
+      },
+      beforeBrowserTextInputCount,
+    ).then((handle) => handle.jsonValue());
+    assert.equal(browserBeforeInputCoverage.activeElementId, 'netsurf-text-input');
+    assert.equal(browserBeforeInputCoverage.dataset, 'beforeinput');
+    assert.ok(browserBeforeInputCoverage.after >= beforeBrowserTextInputCount + 2, `expected browser-generated beforeinput text to forward key down/up, got ${JSON.stringify(browserBeforeInputCoverage)}`);
+    assert.deepEqual(
+      browserBeforeInputCoverage.lastInputEvent.detail,
+      { text: 'é', inputType: 'insertText', isComposing: false, trusted: true, forwardedCharacters: 1 },
+      `expected trusted browser-generated beforeinput metadata, got ${JSON.stringify(browserBeforeInputCoverage)}`,
+    );
+    const browserBeforeInputByTypeAndCode = new Map(
+      browserBeforeInputCoverage.history
+        .filter((event) => event.detail && Number.isFinite(event.detail.nsfb))
+        .map((event) => [`${event.type}:${event.detail.nsfb}`, event.detail]),
+    );
+    assert.equal(browserBeforeInputByTypeAndCode.get('beforeinput-keydown:233')?.source, 'beforeinput', `expected beforeinput Latin-1 keydown mapping, got ${JSON.stringify(browserBeforeInputCoverage)}`);
+    assert.equal(browserBeforeInputByTypeAndCode.get('beforeinput-keyup:233')?.char, 'é', `expected beforeinput Latin-1 keyup mapping, got ${JSON.stringify(browserBeforeInputCoverage)}`);
+
     const beforeToolbarInputCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsForwarded);
     await clickNetSurfCanvasPixel(canvasLocator, 75, 15);
     const toolbarActivation = await page.waitForFunction(

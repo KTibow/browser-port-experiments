@@ -51,6 +51,8 @@ test('NetSurf public page exposes the dirty-rect framebuffer/input bridge', asyn
   assert.match(page, /netsurf_framebuffer_push_key/);
   assert.match(page, /netsurf_framebuffer_push_mouse/);
   assert.match(page, /inputEventHistory/);
+  assert.match(page, /beforeinput/);
+  assert.match(page, /netsurf-text-input/);
   assert.match(page, /compositionend/);
   assert.doesNotMatch(page, /requestAnimationFrame\(render\)/);
   assert.doesNotMatch(page, /nsfb-canvas-probe\.js/);
