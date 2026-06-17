@@ -89,6 +89,38 @@ async function closePage(page) {
   await page.context().close();
 }
 
+async function clickNetSurfCanvasPixel(canvasLocator, x, y) {
+  const box = await canvasLocator.boundingBox();
+  if (!box) throw new Error('NetSurf canvas is not visible');
+  const canvasSize = await canvasLocator.evaluate((canvas) => ({ width: canvas.width, height: canvas.height }));
+  await canvasLocator.click({
+    position: {
+      x: x * box.width / canvasSize.width,
+      y: y * box.height / canvasSize.height,
+    },
+  });
+}
+
+async function readNetSurfStatusBarMetrics(page) {
+  return page.evaluate(() => {
+    const canvas = document.querySelector('#viewport');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const { data } = ctx.getImageData(0, 462, 200, 18);
+    let black = 0;
+    let nonGrey = 0;
+    let hash = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const red = data[i];
+      const green = data[i + 1];
+      const blue = data[i + 2];
+      if (red < 16 && green < 16 && blue < 16) black += 1;
+      if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+      hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+    }
+    return { black, nonGrey, hash };
+  });
+}
+
 before(async () => {
   previewProcess = startPreview();
   await Promise.race([
@@ -143,7 +175,7 @@ test('root page renders registry launch links and work queue', { timeout: 15_000
   }
 });
 
-test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', { timeout: 20_000 }, async () => {
+test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', { timeout: 35_000 }, async () => {
   const page = await newAppPage();
   try {
     await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
@@ -220,6 +252,45 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.deepEqual(result.blankPage, [255, 255, 255, 255], `expected deterministic about:blank content pixel, got ${JSON.stringify(result)}`);
 
     const canvasLocator = page.locator('#viewport');
+    const beforeToolbarStatus = await readNetSurfStatusBarMetrics(page);
+    await clickNetSurfCanvasPixel(canvasLocator, 75, 15);
+    const toolbarActivation = await page.waitForFunction(
+      (before) => {
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const { data } = ctx.getImageData(0, 462, 200, 18);
+        let black = 0;
+        let nonGrey = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        if (black < before.black + 300 || nonGrey < before.nonGrey + 300 || hash === before.hash) return null;
+        return {
+          before,
+          after: { black, nonGrey, hash },
+          lastDirtyRect: window.netsurfFramebufferState.lastDirtyRect,
+          lastInputEvent: window.netsurfFramebufferState.lastInputEvent,
+        };
+      },
+      beforeToolbarStatus,
+    ).then((handle) => handle.jsonValue());
+    assert.equal(toolbarActivation.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(toolbarActivation.lastInputEvent.detail, { button: 0 });
+    assert.ok(
+      toolbarActivation.lastDirtyRect[0] <= 0 && toolbarActivation.lastDirtyRect[1] <= 462 && toolbarActivation.lastDirtyRect[2] >= 200 && toolbarActivation.lastDirtyRect[3] >= 480,
+      `expected NetSurf dirty rectangle to include the status-bar redraw after toolbar activation, got ${JSON.stringify(toolbarActivation)}`,
+    );
+    assert.ok(
+      toolbarActivation.after.black >= toolbarActivation.before.black + 300,
+      `expected toolbar activation to produce observable NetSurf status-bar text, got ${JSON.stringify(toolbarActivation)}`,
+    );
+
     const beforeInputCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsForwarded);
     await canvasLocator.click({ position: { x: 320, y: 240 } });
     await page.mouse.wheel(0, 120);

@@ -19,12 +19,13 @@ What it proves:
 - The full `nsfb.js` artifact is modularized as `createNetSurfFrameBuffer`, starts from the public page, enters an Emscripten browser main loop, and exports its live framebuffer pointer/width/height/stride plus input queue shims.
 - The public page copies NetSurf framebuffer frontend pixels (currently `-f emscripten -w 640 -h 480 about:blank`) into Canvas `ImageData` from libnsfb surface `update` dirty rectangles, coalesces callback bursts to one `requestAnimationFrame` paint, and stamps canvas/body dirty-rect metadata for smoke tests.
 - Canvas pointer movement/buttons, wheel, and a broader SDL/libnsfb-style keyboard subset (navigation, modifiers, function keys, numpad fallbacks, printable Latin-1) are queued into libnsfb events for the framebuffer frontend/fbtk path.
+- A deterministic Playwright interaction now clicks the NetSurf reload toolbar button and asserts the engine's own status-bar framebuffer region redraws with transient activation/status text, proving an observable browser-state change beyond JS forwarded-event counters.
 - The checked-in artifacts are intentionally offline: curl/networking, OpenSSL, JavaScript/Duktape, PNG/JPEG/WebP/JPEGXL, SVG, and freetype are disabled.
 
 What it does **not** prove yet:
 
 - No Wisp networking yet. HTTP(S) is disabled to avoid libcurl/OpenSSL while the framebuffer path is being established. The public page only documents the future `BrowserPortWisp` handoff and deliberately does not hard-code a Wisp endpoint into HTML or C/WASM.
-- Input is now wired at the libnsfb event level with deterministic Playwright coverage for click, wheel, and key forwarding; text composition/IME and exhaustive keycode coverage are not done.
+- Input is now wired at the libnsfb event level with deterministic Playwright coverage for click, wheel, key forwarding, and a reload-toolbar activation that changes NetSurf-rendered status-bar pixels; text composition/IME and exhaustive keycode coverage are not done.
 - The page no longer polls/copies the full framebuffer each animation frame; it depends on the dedicated Emscripten libnsfb surface `update` callback. The checked-in artifacts have been rebuilt from the externalized surface source patch and include cursor callbacks plus C-side dirty-rect coalescing; the checked-in page also coalesces dirty callbacks before canvas painting.
 
 ## Toolchain path
@@ -110,10 +111,10 @@ ports/netsurf/scripts/verify-artifact.sh
 npm test
 ```
 
-The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, samples deterministic NetSurf chrome/about:blank pixels, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
+The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, samples deterministic NetSurf chrome/about:blank pixels, clicks the reload toolbar button and waits for a NetSurf-rendered status-bar redraw, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
 
 ## Suggested next steps
 
-1. Expand canvas input coverage (IME/text input, modifier state, more keycodes) and identify additional deterministic UI interactions beyond the current click/wheel/key/cursor metadata coverage.
+1. Expand canvas input coverage (IME/text input, modifier state, more keycodes) and deepen deterministic UI assertions toward address-bar editing/focus, history button state, or content scroll position.
 2. Re-enable PNG/JPEG via Emscripten ports or vendored libraries after the dirty-rect path remains stable.
 3. Design a Wisp-backed fetcher before re-enabling HTTP(S); do not bake `wss://anura.pro/` into C code.
