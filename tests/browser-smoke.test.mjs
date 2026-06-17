@@ -2239,6 +2239,88 @@ test('NetSurf about:welcome lower link activation preserves offline content with
   }
 });
 
+test('NetSurf about:welcome top visible search button submits an empty form with deterministic offline rasters', { timeout: 25_000 }, async () => {
+  const page = await newAppPage();
+  try {
+    await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
+    await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
+    await page.locator('#viewport').waitFor({ state: 'visible' });
+    await waitForNetSurfVisibleTextSignatures(page);
+
+    const canvasLocator = page.locator('#viewport');
+    const beforeTopSearchHoverDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+    await hoverNetSurfCanvasPixel(canvasLocator, 260, 398);
+    const topSearchButtonHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 981, nonGrey: 2285, nonWhite: 11160, hash: 2912136484 },
+        },
+        topSearchButtonBand: {
+          region: { x: 220, y: 380, width: 150, height: 42 },
+          metrics: { black: 396, nonGrey: 6300, nonWhite: 6300, hash: 2087632276 },
+        },
+      },
+      beforeTopSearchHoverDirtyRects,
+    );
+    assert.equal(topSearchButtonHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(topSearchButtonHover.cursor.hotspot, [4, 0], `expected top-visible about:welcome search button hover to expose NetSurf's hand cursor, got ${JSON.stringify(topSearchButtonHover)}`);
+    assert.equal(topSearchButtonHover.cursor.rect[2] - topSearchButtonHover.cursor.rect[0], 16, `expected top-visible search button hand cursor width, got ${JSON.stringify(topSearchButtonHover)}`);
+    assert.deepEqual(
+      topSearchButtonHover.metrics.status,
+      { black: 981, nonGrey: 2285, nonWhite: 11160, hash: 2912136484 },
+      `expected top-visible about:welcome search button hover to rasterize its form action/status URL, got ${JSON.stringify(topSearchButtonHover)}`,
+    );
+
+    const beforeTopSearchSubmitCount = topSearchButtonHover.inputEventsForwarded;
+    await clickNetSurfCanvasPixel(canvasLocator, 260, 398);
+    const topSearchEmptySubmit = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 382, nonGrey: 1686, nonWhite: 11160, hash: 2143802459 },
+        },
+        address: {
+          region: { x: 95, y: 3, width: 520, height: 28 },
+          metrics: { black: 1307, nonGrey: 12610, nonWhite: 4453, hash: 4061849669 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 1778, nonGrey: 267668, nonWhite: 272453, hash: 2132359435 },
+        },
+        topSearchButtonBand: {
+          region: { x: 220, y: 380, width: 150, height: 42 },
+          metrics: { black: 0, nonGrey: 6300, nonWhite: 6300, hash: 1091931776 },
+        },
+        logo: {
+          region: { x: 15, y: 118, width: 570, height: 45 },
+          metrics: { black: 0, nonGrey: 25650, nonWhite: 25650, hash: 4271475706 },
+        },
+      },
+      topSearchButtonHover.dirtyRectsObserved,
+    );
+    assert.equal(topSearchEmptySubmit.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(topSearchEmptySubmit.lastInputEvent.detail, { button: 0 });
+    assert.ok(topSearchEmptySubmit.inputEventsForwarded >= beforeTopSearchSubmitCount + 3, `expected top-visible search button activation click forwarding, got ${JSON.stringify(topSearchEmptySubmit)}`);
+    assert.equal(topSearchEmptySubmit.inputEventsDropped, 0, `expected no dropped input events through top-visible search button activation, got ${JSON.stringify(topSearchEmptySubmit)}`);
+    assert.deepEqual(
+      topSearchEmptySubmit.metrics,
+      {
+        status: { black: 382, nonGrey: 1686, nonWhite: 11160, hash: 2143802459 },
+        address: { black: 1307, nonGrey: 12610, nonWhite: 4453, hash: 4061849669 },
+        content: { black: 1778, nonGrey: 267668, nonWhite: 272453, hash: 2132359435 },
+        topSearchButtonBand: { black: 0, nonGrey: 6300, nonWhite: 6300, hash: 1091931776 },
+        logo: { black: 0, nonGrey: 25650, nonWhite: 25650, hash: 4271475706 },
+      },
+      `expected top-visible empty search submit to visibly update offline status/address/content rasters without hard-coded networking, got ${JSON.stringify(topSearchEmptySubmit)}`,
+    );
+  } finally {
+    await closePage(page);
+  }
+});
+
 test('NetSurf about:welcome search form exposes deterministic focus, typing, and submit rasters', { timeout: 25_000 }, async () => {
   const page = await newAppPage();
   try {
