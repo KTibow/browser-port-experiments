@@ -273,6 +273,36 @@ input {
   padding: 0 0.8rem;
 }
 
+code {
+  color: var(--accent-2);
+}
+
+.diagnostic-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) minmax(160px, 1fr) 120px minmax(120px, 1fr) auto;
+  gap: 0.8rem;
+  align-items: end;
+}
+
+.diagnostic-form label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.diagnostic-output {
+  min-height: 14rem;
+  margin: 1rem 0 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: #080c18;
+  color: var(--text);
+  padding: 1rem;
+  white-space: pre-wrap;
+}
+
 .engine-layout {
   display: grid;
   grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
@@ -328,6 +358,10 @@ iframe {
   nav,
   .url-form {
     justify-content: stretch;
+  }
+
+  .diagnostic-form {
+    grid-template-columns: 1fr;
   }
 
   .engine-layout {

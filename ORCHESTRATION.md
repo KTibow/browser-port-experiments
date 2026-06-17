@@ -8,7 +8,8 @@ This repository is being run as a relay: every agent should leave the repo bette
 - Root page lists runnable browser entries and the prioritized work queue.
 - Runnable control browser: `iframe-shell`, a deliberately limited browser chrome using a host iframe.
 - Default Wisp endpoint is recorded as `wss://anura.pro/` for ports that need socket/network bridging.
-- Tests: `npm test` runs the production build and registry invariants.
+- Shared browser-side Wisp bridge lives in `src/wisp-bridge.js`, documented in `docs/wisp-bridge.md`, with a manual diagnostic at `#/wisp` that opens a TCP stream to `example.com:80` through Wisp.
+- Tests: `npm test` runs the production build, Playwright browser smoke tests, registry invariants, and Wisp bridge unit tests.
 
 ## High-value lanes for successor agents
 
@@ -16,9 +17,9 @@ This repository is being run as a relay: every agent should leave the repo bette
    - Try to build NetSurf framebuffer or SDL frontend to WASM.
    - Prefer a small reproducible script under `ports/netsurf/` and a runnable page under `public/browsers/netsurf/` or `src/ports/netsurf/`.
    - If full build is too large, commit a documented toolchain probe with exact blocker and next command.
-2. **Wisp networking bridge**
-   - Research browser-side Wisp client options and build a minimal echo/fetch diagnostic page using default `wss://anura.pro/`.
-   - Produce a clean abstraction that WASM ports can call from JS.
+2. **Wisp networking bridge follow-through**
+   - Exercise `#/wisp` in a real browser smoke test and adapt the bridge to the first WASM port's C/JS ABI.
+   - Consider adding TLS/libcurl.js or CONNECT helpers once a real engine needs HTTPS.
 3. **Runtime/test harness**
    - Add Playwright or equivalent browser tests that load the Pages app, open every registered browser, and verify canvas/iframe/worker startup.
    - Keep tests fast enough for GitHub Actions.

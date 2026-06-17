@@ -44,4 +44,4 @@ Record exact blockers in `ports/netsurf/README.md` and commit scripts even if th
 
 ## Networking
 
-Wisp is the preferred default for browser-like networking, with `wss://anura.pro/` as the default endpoint. Ports should avoid hard-coding it deep in engine code; consume it from a shared JS setting so users can change endpoints later.
+Wisp is the preferred default for browser-like networking, with `wss://anura.pro/` as the default endpoint. Ports should avoid hard-coding it deep in engine code; consume it from the shared JS setting/bridge so users can change endpoints later. See `docs/wisp-bridge.md` and the `#/wisp` diagnostic page for the current browser-side API.

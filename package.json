@@ -12,6 +12,7 @@
     "test:smoke": "npm run build && node --test tests/browser-smoke.test.mjs"
   },
   "dependencies": {
+    "@mercuryworkshop/wisp-js": "^0.4.1",
     "@vitejs/plugin-legacy": "latest",
     "vite": "latest"
   },

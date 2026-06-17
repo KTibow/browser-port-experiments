@@ -1,5 +1,8 @@
 import './styles.css';
 import { DEFAULT_WISP_URL, browsers, getBrowser, plannedPorts } from './registry.js';
+import { installBrowserPortWisp, normalizeWispUrl, runWispDiagnostic, writeWispEndpoint } from './wisp-bridge.js';
+
+installBrowserPortWisp();
 
 const STORAGE_KEYS = {
   wispUrl: 'browser-port-experiments:wisp-url',
@@ -53,6 +56,7 @@ function renderHeader(activeId = '') {
         <span>Browser Port Experiments</span>
       </a>
       <nav aria-label="Browsers">
+        <a class="nav-link ${activeId === 'wisp-diagnostic' ? 'active' : ''}" href="#/wisp">Wisp diagnostic</a>
         ${browsers
           .map(
             (browser) =>
@@ -77,6 +81,7 @@ function renderHome() {
         </p>
         <div class="hero-actions">
           <a class="button primary" href="${browsers[0].path}">Open current working browser</a>
+          <a class="button" href="#/wisp">Test Wisp networking</a>
           <a class="button" href="https://github.com/KTibow/browser-port-experiments">Repository</a>
         </div>
       </section>
@@ -125,6 +130,62 @@ function renderHome() {
         </ol>
       </section>
     </main>`;
+}
+
+function renderWispDiagnostic() {
+  const app = shell();
+  const wispUrl = readSetting(STORAGE_KEYS.wispUrl, DEFAULT_WISP_URL);
+  app.innerHTML = `
+    ${renderHeader('wisp-diagnostic')}
+    <main class="container">
+      <section class="panel wisp-panel">
+        <div class="panel-heading">
+          <h1>Wisp networking diagnostic</h1>
+          <p>
+            Browser ports can use <code>window.BrowserPortWisp</code> to open TCP streams through a Wisp websocket.
+            The default endpoint is <code>${DEFAULT_WISP_URL}</code> and this check performs a plain HTTP request to <code>example.com:80</code>.
+          </p>
+        </div>
+        <form class="diagnostic-form" id="wisp-form">
+          <label>
+            Wisp endpoint
+            <input id="wisp-url" autocomplete="url" spellcheck="false" value="${escapeHtml(wispUrl)}" />
+          </label>
+          <label>
+            Target host
+            <input id="wisp-host" value="example.com" />
+          </label>
+          <label>
+            TCP port
+            <input id="wisp-port" inputmode="numeric" value="80" />
+          </label>
+          <label>
+            HTTP path
+            <input id="wisp-path" value="/" />
+          </label>
+          <button class="button primary" type="submit">Run diagnostic</button>
+        </form>
+        <pre class="diagnostic-output" id="wisp-output">Ready. Click “Run diagnostic” to open a Wisp websocket and TCP stream.</pre>
+      </section>
+    </main>`;
+
+  const form = document.querySelector('#wisp-form');
+  const output = document.querySelector('#wisp-output');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const endpointInput = document.querySelector('#wisp-url').value;
+    const host = document.querySelector('#wisp-host').value.trim();
+    const port = Number(document.querySelector('#wisp-port').value);
+    const path = document.querySelector('#wisp-path').value.trim() || '/';
+    try {
+      const endpoint = writeWispEndpoint(normalizeWispUrl(endpointInput));
+      output.textContent = `Connecting to ${endpoint} …`;
+      const result = await runWispDiagnostic({ endpoint, host, port, path });
+      output.textContent = JSON.stringify(result, null, 2);
+    } catch (error) {
+      output.textContent = error instanceof Error ? error.stack || error.message : String(error);
+    }
+  });
 }
 
 function renderBrowser(id) {
@@ -221,6 +282,7 @@ function renderBrowser(id) {
 function route() {
   const [, page, id] = location.hash.match(/^#\/(browser)?\/?([^/]*)?/) || [];
   if (page === 'browser') renderBrowser(id);
+  else if (location.hash === '#/wisp') renderWispDiagnostic();
   else renderHome();
 }
 
