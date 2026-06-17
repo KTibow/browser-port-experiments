@@ -83,6 +83,7 @@
         inputEventsForwarded: 0,
         lastInputEvent: null,
         inputEventHistory: [],
+        compositionSession: { active: false, text: '', updates: 0, trusted: false },
         keyboardLayout: 'SDL/libnsfb keycode subset plus printable Latin-1, numpad, modifier, navigation, function-key, browser beforeinput text, and IME composition fallbacks',
         cursor: null,
         dirtyRectCallbacksObserved: 0,
@@ -382,22 +383,69 @@
             event.preventDefault();
             forwarded(pushKey(0, code), 'keyup', keyEventDetail(event, code));
           });
+          target.addEventListener('compositionstart', (event) => {
+            framebufferState.compositionSession = {
+              active: true,
+              text: event.data || '',
+              updates: 0,
+              trusted: event.isTrusted,
+            };
+            rememberInput('compositionstart', { text: event.data || '', trusted: event.isTrusted });
+            renderMetadata();
+          });
+          target.addEventListener('compositionupdate', (event) => {
+            const previous = framebufferState.compositionSession || { updates: 0 };
+            framebufferState.compositionSession = {
+              active: true,
+              text: event.data || '',
+              updates: (previous.updates || 0) + 1,
+              trusted: event.isTrusted,
+            };
+            rememberInput('compositionupdate', {
+              text: event.data || '',
+              trusted: event.isTrusted,
+              updates: framebufferState.compositionSession.updates,
+            });
+            renderMetadata();
+          });
           target.addEventListener('compositionend', (event) => {
             const text = event.data || '';
+            const previous = framebufferState.compositionSession || { updates: 0 };
+            framebufferState.compositionSession = {
+              active: false,
+              text,
+              updates: previous.updates || 0,
+              trusted: event.isTrusted,
+            };
             const forwardedCharacters = forwardTextCharacters(text, 'compositionend', 'composition');
-            rememberInput('compositionend', { text, forwardedCharacters });
+            rememberInput('compositionend', {
+              text,
+              trusted: event.isTrusted,
+              updates: framebufferState.compositionSession.updates,
+              forwardedCharacters,
+            });
             renderMetadata();
           });
         }
         textInputProxy.addEventListener('beforeinput', (event) => {
           const text = event.data || '';
           if (event.cancelable) event.preventDefault();
-          const forwardedCharacters = forwardTextCharacters(text, 'beforeinput', 'beforeinput');
+          const isCompositionUpdate = event.isComposing || event.inputType === 'insertCompositionText';
+          const forwardedCharacters = isCompositionUpdate ? 0 : forwardTextCharacters(text, 'beforeinput', 'beforeinput');
+          if (!isCompositionUpdate && framebufferState.compositionSession?.active) {
+            framebufferState.compositionSession = {
+              ...framebufferState.compositionSession,
+              active: false,
+              text,
+              trusted: event.isTrusted,
+            };
+          }
           rememberInput('beforeinput', {
             text,
             inputType: event.inputType,
             isComposing: event.isComposing,
             trusted: event.isTrusted,
+            compositionActive: Boolean(framebufferState.compositionSession?.active),
             forwardedCharacters,
           });
           textInputProxy.value = '';

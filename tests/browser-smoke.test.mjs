@@ -634,7 +634,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.ok(browserBeforeInputCoverage.after >= beforeBrowserTextInputCount + 2, `expected browser-generated beforeinput text to forward key down/up, got ${JSON.stringify(browserBeforeInputCoverage)}`);
     assert.deepEqual(
       browserBeforeInputCoverage.lastInputEvent.detail,
-      { text: 'é', inputType: 'insertText', isComposing: false, trusted: true, forwardedCharacters: 1 },
+      { text: 'é', inputType: 'insertText', isComposing: false, trusted: true, compositionActive: false, forwardedCharacters: 1 },
       `expected trusted browser-generated beforeinput metadata, got ${JSON.stringify(browserBeforeInputCoverage)}`,
     );
     const browserBeforeInputByTypeAndCode = new Map(
@@ -644,6 +644,76 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     );
     assert.equal(browserBeforeInputByTypeAndCode.get('beforeinput-keydown:233')?.source, 'beforeinput', `expected beforeinput Latin-1 keydown mapping, got ${JSON.stringify(browserBeforeInputCoverage)}`);
     assert.equal(browserBeforeInputByTypeAndCode.get('beforeinput-keyup:233')?.char, 'é', `expected beforeinput Latin-1 keyup mapping, got ${JSON.stringify(browserBeforeInputCoverage)}`);
+
+    const beforeTrustedImeCount = browserBeforeInputCoverage.after;
+    const cdpSession = await page.context().newCDPSession(page);
+    await cdpSession.send('Input.imeSetComposition', {
+      text: 'é',
+      selectionStart: 1,
+      selectionEnd: 1,
+      replacementStart: 0,
+      replacementEnd: 0,
+    });
+    const trustedImeCompositionCoverage = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.lastInputEvent?.type !== 'beforeinput') return null;
+        const history = state.inputEventHistory.slice(-8).map(({ type, detail }) => ({ type, detail }));
+        const hasTrustedUpdate = history.some((event) => event.type === 'compositionupdate' && event.detail?.text === 'é' && event.detail?.trusted === true);
+        if (!hasTrustedUpdate || state.lastInputEvent.detail?.inputType !== 'insertCompositionText') return null;
+        return {
+          before,
+          after: state.inputEventsForwarded,
+          compositionSession: state.compositionSession,
+          lastInputEvent: state.lastInputEvent,
+          history,
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+        };
+      },
+      beforeTrustedImeCount,
+    ).then((handle) => handle.jsonValue());
+    assert.equal(trustedImeCompositionCoverage.after, beforeTrustedImeCount, `expected trusted IME composition updates to update metadata without premature key forwarding, got ${JSON.stringify(trustedImeCompositionCoverage)}`);
+    assert.equal(trustedImeCompositionCoverage.dataset, 'beforeinput');
+    assert.deepEqual(
+      trustedImeCompositionCoverage.lastInputEvent.detail,
+      { text: 'é', inputType: 'insertCompositionText', isComposing: true, trusted: true, compositionActive: true, forwardedCharacters: 0 },
+      `expected trusted Chromium IME insertCompositionText metadata, got ${JSON.stringify(trustedImeCompositionCoverage)}`,
+    );
+    assert.equal(trustedImeCompositionCoverage.compositionSession.active, true);
+    assert.equal(trustedImeCompositionCoverage.compositionSession.text, 'é');
+    assert.ok(trustedImeCompositionCoverage.compositionSession.updates >= 1, `expected tracked IME composition updates, got ${JSON.stringify(trustedImeCompositionCoverage)}`);
+
+    await cdpSession.send('Input.insertText', { text: 'é' });
+    const trustedImeCommitCoverage = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.inputEventsForwarded < before + 2 || state.lastInputEvent?.type !== 'beforeinput') return null;
+        if (state.lastInputEvent.detail?.inputType !== 'insertText') return null;
+        return {
+          before,
+          after: state.inputEventsForwarded,
+          compositionSession: state.compositionSession,
+          lastInputEvent: state.lastInputEvent,
+          history: state.inputEventHistory.slice(-8).map(({ type, detail }) => ({ type, detail })),
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+        };
+      },
+      beforeTrustedImeCount,
+    ).then((handle) => handle.jsonValue());
+    assert.ok(trustedImeCommitCoverage.after >= beforeTrustedImeCount + 2, `expected trusted CDP IME commit to forward Latin-1 key down/up, got ${JSON.stringify(trustedImeCommitCoverage)}`);
+    assert.equal(trustedImeCommitCoverage.compositionSession.active, false);
+    assert.deepEqual(
+      trustedImeCommitCoverage.lastInputEvent.detail,
+      { text: 'é', inputType: 'insertText', isComposing: false, trusted: true, compositionActive: false, forwardedCharacters: 1 },
+      `expected committed trusted IME text metadata, got ${JSON.stringify(trustedImeCommitCoverage)}`,
+    );
+    const trustedImeByTypeAndCode = new Map(
+      trustedImeCommitCoverage.history
+        .filter((event) => event.detail && Number.isFinite(event.detail.nsfb))
+        .map((event) => [`${event.type}:${event.detail.nsfb}`, event.detail]),
+    );
+    assert.equal(trustedImeByTypeAndCode.get('beforeinput-keydown:233')?.char, 'é', `expected trusted IME commit keydown mapping, got ${JSON.stringify(trustedImeCommitCoverage)}`);
+    assert.equal(trustedImeByTypeAndCode.get('beforeinput-keyup:233')?.source, 'beforeinput', `expected trusted IME commit keyup mapping, got ${JSON.stringify(trustedImeCommitCoverage)}`);
 
     const beforeToolbarInputCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsForwarded);
     await clickNetSurfCanvasPixel(canvasLocator, 75, 15);
@@ -772,7 +842,10 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     ).then((handle) => handle.jsonValue());
     assert.equal(expandedInputCoverage.dataset, 'compositionend');
     assert.ok(expandedInputCoverage.after >= beforeExpandedInputCount + 12, `expected expanded modifier/navigation/numpad/IME forwarding, got ${JSON.stringify(expandedInputCoverage)}`);
-    assert.deepEqual(expandedInputCoverage.lastInputEvent.detail, { text: 'éZ', forwardedCharacters: 2 });
+    assert.equal(expandedInputCoverage.lastInputEvent.detail.text, 'éZ');
+    assert.equal(expandedInputCoverage.lastInputEvent.detail.trusted, false);
+    assert.equal(expandedInputCoverage.lastInputEvent.detail.forwardedCharacters, 2);
+    assert.ok(Number.isInteger(expandedInputCoverage.lastInputEvent.detail.updates), `expected IME composition metadata to include update count, got ${JSON.stringify(expandedInputCoverage)}`);
     const expandedByTypeAndCode = new Map(
       expandedInputCoverage.history
         .filter((event) => event.detail && Number.isFinite(event.detail.nsfb))

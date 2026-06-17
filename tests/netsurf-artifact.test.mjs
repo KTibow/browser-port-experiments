@@ -53,7 +53,10 @@ test('NetSurf public page exposes the dirty-rect framebuffer/input bridge', asyn
   assert.match(page, /inputEventHistory/);
   assert.match(page, /beforeinput/);
   assert.match(page, /netsurf-text-input/);
+  assert.match(page, /compositionstart/);
+  assert.match(page, /compositionupdate/);
   assert.match(page, /compositionend/);
+  assert.match(page, /insertCompositionText/);
   assert.doesNotMatch(page, /requestAnimationFrame\(render\)/);
   assert.doesNotMatch(page, /nsfb-canvas-probe\.js/);
   assert.doesNotMatch(page, /wss:\/\/anura\.pro/i, 'public NetSurf page should not hard-code the shared Wisp endpoint');
