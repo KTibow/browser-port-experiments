@@ -834,6 +834,56 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
       `expected deterministic about:welcome back-to-top glyph/logo coverage after upward wheel navigation, got ${JSON.stringify(backToTopSignatures)}`,
     );
     assert.ok(backToTopSignatures.dirtyRectsObserved > beforeBackToTopDirtyRects, `expected upward wheel back-to-top navigation to preserve dirty-rect advancement, got ${JSON.stringify(backToTopSignatures)}`);
+
+    await hoverNetSurfCanvasPixel(canvasLocator, 320, 240);
+    const beforeKeyboardScrollDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+    await page.mouse.wheel(0, 120);
+    await page.keyboard.press('PageDown');
+    const keyboardPageDownSignatures = await waitForNetSurfWelcomeScrollSignatures(
+      page,
+      {
+        welcomeLinksAfterKeyboardPageDown: { x: 20, y: 120, width: 590, height: 340, predicate: 'blueLinkGlyph', expectedCount: 4187, expectedHash: 167346089 },
+        welcomeLowerTextAfterKeyboardPageDown: { x: 25, y: 260, width: 590, height: 190, predicate: 'darkGlyph', expectedCount: 2281, expectedHash: 2120331461 },
+      },
+      beforeKeyboardScrollDirtyRects,
+    );
+    assert.ok(keyboardPageDownSignatures.dirtyRectsObserved > beforeKeyboardScrollDirtyRects, `expected repeated wheel+PageDown alternate navigation to preserve dirty-rect advancement, got ${JSON.stringify(keyboardPageDownSignatures)}`);
+
+    await page.keyboard.press('PageUp');
+    const keyboardPageUpBackToTopSignatures = await waitForNetSurfWelcomeScrollSignatures(
+      page,
+      {
+        welcomeLogoAfterKeyboardPageUp: { x: 20, y: 120, width: 590, height: 340, predicate: 'blueLinkGlyph', expectedCount: 3274, expectedHash: 2837369989 },
+        welcomeIntroAfterKeyboardPageUp: { x: 25, y: 120, width: 590, height: 340, predicate: 'darkGlyph', expectedCount: 8757, expectedHash: 1088269131 },
+      },
+      keyboardPageDownSignatures.dirtyRectsObserved,
+    );
+    assert.deepEqual(
+      {
+        welcomeLogoAfterKeyboardPageUp: {
+          count: keyboardPageUpBackToTopSignatures.signatures.welcomeLogoAfterKeyboardPageUp.count,
+          hash: keyboardPageUpBackToTopSignatures.signatures.welcomeLogoAfterKeyboardPageUp.hash,
+          rowBands: keyboardPageUpBackToTopSignatures.signatures.welcomeLogoAfterKeyboardPageUp.rowBands,
+          colBandCount: keyboardPageUpBackToTopSignatures.signatures.welcomeLogoAfterKeyboardPageUp.colBands.length,
+        },
+        welcomeIntroAfterKeyboardPageUp: {
+          count: keyboardPageUpBackToTopSignatures.signatures.welcomeIntroAfterKeyboardPageUp.count,
+          hash: keyboardPageUpBackToTopSignatures.signatures.welcomeIntroAfterKeyboardPageUp.hash,
+          rowBands: keyboardPageUpBackToTopSignatures.signatures.welcomeIntroAfterKeyboardPageUp.rowBands,
+          colBandCount: keyboardPageUpBackToTopSignatures.signatures.welcomeIntroAfterKeyboardPageUp.colBands.length,
+        },
+      },
+      {
+        welcomeLogoAfterKeyboardPageUp: { count: 3274, hash: 2837369989, rowBands: [[123, 156, 3274, 364]], colBandCount: 4 },
+        welcomeIntroAfterKeyboardPageUp: { count: 8757, hash: 1088269131, rowBands: [[196, 219, 3164, 202], [247, 261, 1996, 294], [268, 282, 1911, 300], [289, 303, 1290, 197], [393, 404, 396, 58]], colBandCount: 43 },
+      },
+      `expected deterministic keyboard PageUp restoration of about:welcome top glyph/logo coverage, got ${JSON.stringify(keyboardPageUpBackToTopSignatures)}`,
+    );
+    assert.ok(keyboardPageUpBackToTopSignatures.dirtyRectsObserved > keyboardPageDownSignatures.dirtyRectsObserved, `expected keyboard PageUp back-to-top navigation to preserve dirty-rect advancement, got ${JSON.stringify(keyboardPageUpBackToTopSignatures)}`);
+    const pageUpInput = await page.evaluate(() => window.netsurfFramebufferState.lastInputEvent);
+    assert.equal(pageUpInput.type, 'keyup');
+    assert.equal(pageUpInput.detail.key, 'PageUp');
+    assert.equal(pageUpInput.detail.nsfb, 280);
   } finally {
     await closePage(page);
   }
