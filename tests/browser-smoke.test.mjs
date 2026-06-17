@@ -234,6 +234,81 @@ async function waitForNetSurfVisibleTextSignatures(page) {
   }, null, { timeout: 15_000 }).then((handle) => handle.jsonValue());
 }
 
+async function waitForNetSurfWelcomeScrollSignatures(page, expected, beforeDirtyRects) {
+  return page.waitForFunction(
+    ({ expectedSignatures, minimumDirtyRects }) => {
+      const state = window.netsurfFramebufferState;
+      if (!state || state.dirtyRectsObserved <= minimumDirtyRects) return null;
+      const canvas = document.querySelector('#viewport');
+      if (!canvas) return null;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const image = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+      const groups = (items) => {
+        const result = [];
+        for (const item of items) {
+          if (!result.length || item[0] > result[result.length - 1][result[result.length - 1].length - 1][0] + 1) {
+            result.push([]);
+          }
+          result[result.length - 1].push(item);
+        }
+        return result.map((group) => [
+          group[0][0],
+          group[group.length - 1][0],
+          group.reduce((sum, value) => sum + value[1], 0),
+          Math.max(...group.map((value) => value[1])),
+        ]);
+      };
+
+      const darkGlyph = (red, green, blue) => red <= 110 && green <= 110 && blue <= 110;
+      const blueLinkGlyph = (red, green, blue) => blue > 120 && red < 120 && green < 180 && blue > red + 40 && blue > green + 20;
+      const predicates = { darkGlyph, blueLinkGlyph };
+      const signatureFor = ({ x, y, width, height, predicate }) => {
+        const testPixel = predicates[predicate];
+        const rowCounts = [];
+        const colCounts = [];
+        let count = 0;
+        let hash = 2166136261 >>> 0;
+        for (let yy = y; yy < y + height; yy += 1) {
+          let rowCount = 0;
+          for (let xx = x; xx < x + width; xx += 1) {
+            const offset = (yy * canvas.width + xx) * 4;
+            const red = image[offset];
+            const green = image[offset + 1];
+            const blue = image[offset + 2];
+            if (testPixel(red, green, blue)) {
+              rowCount += 1;
+              count += 1;
+              const colorHash = predicate === 'blueLinkGlyph' ? red ^ (green << 8) ^ (blue << 16) : 0;
+              hash = (Math.imul(hash, 16777619) ^ ((xx - x) * 13) ^ ((yy - y) * 17) ^ colorHash) >>> 0;
+            }
+          }
+          if (rowCount) rowCounts.push([yy, rowCount]);
+        }
+        for (let xx = x; xx < x + width; xx += 1) {
+          let colCount = 0;
+          for (let yy = y; yy < y + height; yy += 1) {
+            const offset = (yy * canvas.width + xx) * 4;
+            if (testPixel(image[offset], image[offset + 1], image[offset + 2])) colCount += 1;
+          }
+          if (colCount) colCounts.push([xx, colCount]);
+        }
+        return { x, y, width, height, count, hash, rowBands: groups(rowCounts), colBands: groups(colCounts) };
+      };
+
+      const signatures = Object.fromEntries(
+        Object.entries(expectedSignatures).map(([name, region]) => [name, signatureFor(region)]),
+      );
+      const stable = Object.entries(expectedSignatures).every(([name, expected]) => (
+        signatures[name].count === expected.expectedCount && signatures[name].hash === expected.expectedHash
+      ));
+      return stable ? { dirtyRectsObserved: state.dirtyRectsObserved, signatures } : null;
+    },
+    { expectedSignatures: expected, minimumDirtyRects: beforeDirtyRects },
+    { timeout: 10_000 },
+  ).then((handle) => handle.jsonValue());
+}
+
 before(async () => {
   previewProcess = startPreview();
   await Promise.race([
@@ -556,8 +631,39 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.ok(toolbarActivation.after >= beforeToolbarInputCount + 3, `expected toolbar click forwarding, got ${JSON.stringify(toolbarActivation)}`);
 
     const beforeInputCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsForwarded);
+    const beforeScrollDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
     await canvasLocator.click({ position: { x: 320, y: 240 } });
     await page.mouse.wheel(0, 120);
+    const wheelScrollSignatures = await waitForNetSurfWelcomeScrollSignatures(
+      page,
+      {
+        welcomeLinksAfterWheel: { x: 20, y: 120, width: 590, height: 340, predicate: 'blueLinkGlyph', expectedCount: 4187, expectedHash: 3706658537 },
+        welcomeLowerTextAfterWheel: { x: 25, y: 260, width: 590, height: 190, predicate: 'darkGlyph', expectedCount: 844, expectedHash: 2532503896 },
+      },
+      beforeScrollDirtyRects,
+    );
+    assert.deepEqual(
+      {
+        welcomeLinksAfterWheel: {
+          count: wheelScrollSignatures.signatures.welcomeLinksAfterWheel.count,
+          hash: wheelScrollSignatures.signatures.welcomeLinksAfterWheel.hash,
+          rowBands: wheelScrollSignatures.signatures.welcomeLinksAfterWheel.rowBands,
+          colBandCount: wheelScrollSignatures.signatures.welcomeLinksAfterWheel.colBands.length,
+        },
+        welcomeLowerTextAfterWheel: {
+          count: wheelScrollSignatures.signatures.welcomeLowerTextAfterWheel.count,
+          hash: wheelScrollSignatures.signatures.welcomeLowerTextAfterWheel.hash,
+          rowBands: wheelScrollSignatures.signatures.welcomeLowerTextAfterWheel.rowBands,
+          colBandCount: wheelScrollSignatures.signatures.welcomeLowerTextAfterWheel.colBands.length,
+        },
+      },
+      {
+        welcomeLinksAfterWheel: { count: 4187, hash: 3706658537, rowBands: [[363, 377, 1454, 196], [382, 396, 1174, 163], [401, 415, 1192, 173], [420, 431, 367, 43]], colBandCount: 41 },
+        welcomeLowerTextAfterWheel: { count: 844, hash: 2532503896, rowBands: [[293, 304, 396, 58], [368, 373, 128, 24], [387, 392, 128, 24], [406, 411, 128, 24], [425, 430, 64, 12]], colBandCount: 11 },
+      },
+      `expected deterministic scroll-revealed about:welcome link/lower-page glyph coverage after wheel, got ${JSON.stringify(wheelScrollSignatures)}`,
+    );
+    assert.ok(wheelScrollSignatures.dirtyRectsObserved > beforeScrollDirtyRects, `expected wheel scroll to preserve dirty-rect advancement, got ${JSON.stringify(wheelScrollSignatures)}`);
     await page.keyboard.press('a');
     const interaction = await page.waitForFunction(
       (before) => {
@@ -580,6 +686,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(interaction.dataset, 'keyup');
 
     const beforeExpandedInputCount = interaction.after;
+    const beforePageDownDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
     await page.evaluate(() => {
       const canvas = document.querySelector('#viewport');
       canvas.focus();
@@ -628,6 +735,37 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(expandedByTypeAndCode.get('keyup:270')?.code, 'NumpadAdd', `expected numpad operator mapping, got ${JSON.stringify(expandedInputCoverage)}`);
     assert.equal(expandedByTypeAndCode.get('composition-keyup:233')?.char, 'é', `expected Latin-1 IME composition mapping, got ${JSON.stringify(expandedInputCoverage)}`);
     assert.equal(expandedByTypeAndCode.get('composition-keyup:90')?.char, 'Z', `expected ASCII IME composition mapping, got ${JSON.stringify(expandedInputCoverage)}`);
+
+    const pageDownScrollSignatures = await waitForNetSurfWelcomeScrollSignatures(
+      page,
+      {
+        welcomeLinksAfterPageDown: { x: 20, y: 120, width: 590, height: 340, predicate: 'blueLinkGlyph', expectedCount: 4187, expectedHash: 167346089 },
+        welcomeLowerTextAfterPageDown: { x: 25, y: 260, width: 590, height: 190, predicate: 'darkGlyph', expectedCount: 2281, expectedHash: 2120331461 },
+      },
+      beforePageDownDirtyRects,
+    );
+    assert.deepEqual(
+      {
+        welcomeLinksAfterPageDown: {
+          count: pageDownScrollSignatures.signatures.welcomeLinksAfterPageDown.count,
+          hash: pageDownScrollSignatures.signatures.welcomeLinksAfterPageDown.hash,
+          rowBands: pageDownScrollSignatures.signatures.welcomeLinksAfterPageDown.rowBands,
+          colBandCount: pageDownScrollSignatures.signatures.welcomeLinksAfterPageDown.colBands.length,
+        },
+        welcomeLowerTextAfterPageDown: {
+          count: pageDownScrollSignatures.signatures.welcomeLowerTextAfterPageDown.count,
+          hash: pageDownScrollSignatures.signatures.welcomeLowerTextAfterPageDown.hash,
+          rowBands: pageDownScrollSignatures.signatures.welcomeLowerTextAfterPageDown.rowBands,
+          colBandCount: pageDownScrollSignatures.signatures.welcomeLowerTextAfterPageDown.colBands.length,
+        },
+      },
+      {
+        welcomeLinksAfterPageDown: { count: 4187, hash: 167346089, rowBands: [[299, 313, 1454, 196], [318, 332, 1174, 163], [337, 351, 1192, 173], [356, 367, 367, 43]], colBandCount: 41 },
+        welcomeLowerTextAfterPageDown: { count: 2281, hash: 2120331461, rowBands: [[304, 309, 128, 24], [323, 328, 128, 24], [342, 347, 128, 24], [361, 366, 64, 12], [429, 440, 1833, 263]], colBandCount: 36 },
+      },
+      `expected deterministic scroll-revealed about:welcome link/lower-page glyph coverage after PageDown, got ${JSON.stringify(pageDownScrollSignatures)}`,
+    );
+    assert.ok(pageDownScrollSignatures.dirtyRectsObserved > beforePageDownDirtyRects, `expected PageDown scroll to preserve dirty-rect advancement, got ${JSON.stringify(pageDownScrollSignatures)}`);
   } finally {
     await closePage(page);
   }
