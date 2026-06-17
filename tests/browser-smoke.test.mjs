@@ -557,10 +557,12 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
         const clickForwarded = state?.inputEventsForwarded >= before.inputCount + 3 && state?.lastInputEvent?.type === 'pointerup-button';
         // The hover step already proves deterministic address-bar hit testing via
         // NetSurf's I-beam cursor. Some libnsfb/fbtk timings redraw the cursor back
-        // into content immediately after the click, so keep the focus assertion to
-        // the stable pointer-down/up forwarding and sample the address pixels for
-        // diagnostics instead of requiring the transient I-beam to persist.
-        if (!clickForwarded) return null;
+        // into content immediately after the click, so prove the click had a stable
+        // fbtk chrome effect by waiting for NetSurf's address widget to redraw its
+        // focused caret/text surface rather than requiring the transient I-beam to
+        // persist.
+        const addressFocusedCaretVisible = black === 1501 && nonGrey === 12610 && nonWhite === 4665 && hash === 3992501551;
+        if (!clickForwarded || !addressFocusedCaretVisible) return null;
         return {
           before: before.metrics,
           after: { black, nonGrey, nonWhite, hash },
@@ -575,6 +577,12 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(addressFocus.dataset, 'pointerup-button');
     assert.deepEqual(addressFocus.lastInputEvent.detail, { button: 0 });
     assert.ok(addressFocus.cursor.rect.length === 4, `expected cursor metadata after address-bar click, got ${JSON.stringify(addressFocus)}`);
+    assert.notDeepEqual(addressFocus.after, addressFocus.before, `expected address-bar click to visibly focus the fbtk text widget, got ${JSON.stringify(addressFocus)}`);
+    assert.deepEqual(
+      addressFocus.after,
+      { black: 1501, nonGrey: 12610, nonWhite: 4665, hash: 3992501551 },
+      `expected deterministic visible address-bar caret/focus redraw after fbtk click, got ${JSON.stringify(addressFocus)}`,
+    );
 
     await page.keyboard.press('x');
     const addressKeyForwarding = await page.waitForFunction(
@@ -583,25 +591,35 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
         if (!state || state.inputEventsForwarded < beforeCount + 2 || state.lastInputEvent?.type !== 'keyup') return null;
         const canvas = document.querySelector('#viewport');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        const { data } = ctx.getImageData(0, 462, 200, 18);
-        let black = 0;
-        let nonGrey = 0;
-        let hash = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          const red = data[i];
-          const green = data[i + 1];
-          const blue = data[i + 2];
-          if (red < 16 && green < 16 && blue < 16) black += 1;
-          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
-          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
-        }
+        const addressPixels = ctx.getImageData(95, 3, 520, 28).data;
+        const statusPixels = ctx.getImageData(0, 462, 200, 18).data;
+        const metricsFor = (data) => {
+          let black = 0;
+          let nonGrey = 0;
+          let nonWhite = 0;
+          let hash = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const red = data[i];
+            const green = data[i + 1];
+            const blue = data[i + 2];
+            if (red < 16 && green < 16 && blue < 16) black += 1;
+            if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+            if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+            hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+          }
+          return { black, nonGrey, nonWhite, hash };
+        };
+        const address = metricsFor(addressPixels);
+        const visibleTypedText = address.black === 1539 && address.nonGrey === 12610 && address.nonWhite === 4703 && address.hash === 1576672781;
+        if (!visibleTypedText) return null;
         return {
           before: beforeCount,
           after: state.inputEventsForwarded,
           cursor: state.cursor,
           lastInputEvent: state.lastInputEvent,
           lastDirtyRect: state.lastDirtyRect,
-          status: { black, nonGrey, hash },
+          address,
+          status: metricsFor(statusPixels),
           dataset: document.body.dataset.netsurfFramebufferLastInput,
         };
       },
@@ -612,6 +630,11 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(addressKeyForwarding.lastInputEvent.detail.nsfb, 120);
     assert.equal(addressKeyForwarding.dataset, 'keyup');
     assert.ok(addressKeyForwarding.cursor.rect.length === 4, `expected NetSurf to report cursor metadata after address-bar typing, got ${JSON.stringify(addressKeyForwarding)}`);
+    assert.deepEqual(
+      addressKeyForwarding.address,
+      { black: 1539, nonGrey: 12610, nonWhite: 4703, hash: 1576672781 },
+      `expected forwarded fbtk key events to visibly insert deterministic address-bar text, got ${JSON.stringify(addressKeyForwarding)}`,
+    );
 
     const beforeBrowserTextInputCount = addressKeyForwarding.after;
     await page.keyboard.type('é');
