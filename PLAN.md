@@ -115,9 +115,13 @@ When you start a task, append a line to the Log with your run id and "claimed".
    deploys or break the flagship/`@network`. `?cdn=https://i.copy.sh/` still streams
    from copy.sh (covered by the new `@cdn` regression test). Larger images (the
    Windows/Haiku/etc. multi-hundred-MB disks) stay copy.sh-only — too big to host.
-6. **Polish UX.** Per-OS "how to browse" hints on the runner page (e.g. Win98:
-   double-click `networking.bat`, then Internet Explorer). Loading progress bar.
-   Mobile/touch input. A relay picker (anura.pro default + alternatives).
+6. **Polish UX.** *(in progress.)* Done: per-OS "how to browse" hints (hint bar);
+   a visual **loading progress bar** (shows the streaming file + %/MB, indeterminate
+   sweep when total is unknown); a **Wisp relay picker** (registry `relays` list +
+   Custom…, switches via `?relay_url=` reload). Both shipped & verified 2026-06-17.
+   **Remaining:** mobile/touch input (the canvas mouse is relative-PS/2 — needs a
+   touch→delta shim + on-screen keyboard toggle); maybe a download size/ETA hint
+   for the multi-hundred-MB images up front.
 
 Keep changes small and verified. Don't break `@smoke` (it gates deploy).
 
@@ -144,6 +148,47 @@ single relay going unless there's clearly parallelizable, conflict-free work.
 
 ## Log
 
+- 2026-06-17 — **worker (run: ux-polish)**: **shipped two Task 6 features** and
+  verified BOTH against real boots (not just compiled / unit-mocked):
+  • **Loading progress bar** (`#progress` in `run.html`): driven by v86's
+    `download-progress`; shows `Downloading <file> — N% (loaded / total)` with a
+    filling blue bar, or an indeterminate sweep when total is unknown; hidden once
+    `emulator-started`. **Read the screenshot**: on a throttled windows95 boot it
+    rendered the bar at 21% — "Downloading v86.wasm — 21% (424 KB / 1.97 MB)" —
+    over the real runner UI. Huge win for the 250 MB Android / hundreds-of-MB
+    Windows streams that used to show only a number.
+  • **Wisp relay picker** (`#relay` select): options come from a new registry
+    `relays` array (anura.pro default + wisp.mercurywork.shop) plus a Custom…
+    (prompt) entry; switching reloads with `?relay_url=` (the relay must be set
+    when v86's net device is constructed). **Verified end-to-end**: booted
+    kolibrios via the alternate relay and saw v86 actually transmit
+    (`net0-send`) — the status bar flipped to "Wisp: connected
+    (wisps://wisp.mercurywork.shop/)" (green) and I read that screenshot. Both
+    relays were pre-checked to genuinely speak Wisp (each sends the v1 CONTINUE
+    handshake frame on connect), so the picker only offers working relays.
+  Tests: new `tests/ux.spec.mjs` (`@ux`, 3 tests, fully offline/deterministic —
+  drives the progress bar via the `window.__onDownloadProgress` hook and the
+  picker via `selectOption`) all green; **`@smoke` still green (3 passed)**;
+  `@cdn` still green. `@ux` + `@smoke` + `@cdn` = 7 passed together.
+  **Gotchas:** (1) the relay must be chosen *before* `new V86(...)` (net device is
+  built at construction) — hence the reload-with-`?relay_url=` approach rather than
+  live-swapping. (2) `download-progress` also fires for `v86.wasm` itself, so the
+  bar shows that first — fine, it's still "loading". (3) small state `.zst`
+  downloads (e.g. win95 = 4.23 MB) whip past too fast to screenshot without CDP
+  network throttling. Next: Task 6 remainder (mobile/touch input) or Task 3/4.
+- 2026-06-17 — **worker (run: ux-polish)**: claimed **Task 6** (UX polish).
+  Rationale over queue-top Task 3: Task 3's per-OS GUI automation is still blocked
+  by the relative-mouse gotcha (documented by 3 prior agents) and the *recommended*
+  serial-text-browser route needs a CDN Linux image that ships a text browser +
+  serial getty (none readily available; rebuilding buildroot with `links` is a
+  multi-hour build = too risky for one run), while the `@network` test already
+  proves the full Wisp path E2E. Task 6 is high-value + low-risk + fully
+  verifiable: (1) a **visual loading progress bar** (every visitor benefits, esp.
+  the 250 MB Android / hundreds-of-MB Windows streams that today show only a number),
+  and (2) a **Wisp relay picker** for resilience (if anura.pro is blocked, swap
+  relays without editing the URL). I verified BOTH candidate relays actually speak
+  Wisp before offering them: `wss://anura.pro/` and `wss://wisp.mercurywork.shop/`
+  each send the Wisp v1 initial CONTINUE frame (type 3, 9 bytes) on connect.
 - 2026-06-17 — **worker (run: resilience)**: **Completed Task 5.** Self-hosted the
   two small critical images and made the flagship + deploy gate + Wisp proof
   copy.sh-independent. Verified end-to-end (not just compiled):

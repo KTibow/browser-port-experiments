@@ -13,6 +13,9 @@ const titleEl = document.getElementById("title");
 const engineEl = document.getElementById("engine");
 const netEl = document.getElementById("net");
 const screenContainer = document.getElementById("screen_container");
+const progressEl = document.getElementById("progress");
+const progressBar = document.getElementById("progress_bar");
+const progressLabel = document.getElementById("progress_label");
 
 function setStatus(text, kind) {
   statusEl.textContent = text;
@@ -22,6 +25,93 @@ function setStatus(text, kind) {
 function fatal(msg) {
   setStatus(msg, "error");
   console.error("[runner]", msg);
+}
+
+function fmtMB(bytes) {
+  const mb = bytes / 1048576;
+  if (mb >= 100) return mb.toFixed(0) + " MB";
+  if (mb >= 10) return mb.toFixed(1) + " MB";
+  if (mb >= 1) return mb.toFixed(2) + " MB";
+  return Math.round(bytes / 1024) + " KB";
+}
+
+// Visual loading progress bar. Shown while the OS image / saved state streams in
+// (a big deal for the multi-hundred-MB Windows / Android images, which used to
+// show only a number). Exposed on window so tests can drive it deterministically
+// without depending on network timing.
+let progressDone = false;
+function showProgress(loaded, total, name) {
+  if (!progressEl || progressDone) return;
+  progressEl.hidden = false;
+  const label = shortName(name || "image");
+  if (total > 0) {
+    const pct = Math.max(0, Math.min(100, (100 * loaded) / total));
+    progressBar.classList.remove("is-indeterminate");
+    progressBar.style.width = pct.toFixed(1) + "%";
+    progressLabel.textContent = `Downloading ${label} \u2014 ${Math.floor(pct)}% (${fmtMB(loaded)} / ${fmtMB(total)})`;
+  } else {
+    // Unknown total: indeterminate sweep + bytes-so-far.
+    progressBar.classList.add("is-indeterminate");
+    progressLabel.textContent = loaded > 0
+      ? `Downloading ${label} \u2014 ${fmtMB(loaded)}\u2026`
+      : `Downloading ${label}\u2026`;
+  }
+}
+function hideProgress() {
+  progressDone = true;
+  if (!progressEl) return;
+  progressBar.classList.remove("is-indeterminate");
+  progressBar.style.width = "100%";
+  progressEl.hidden = true;
+}
+// Test/console hook: window.__onDownloadProgress({file_name, loaded, total}).
+window.__onDownloadProgress = (e) => {
+  if (!e || progressDone) return;
+  showProgress(Number(e.loaded) || 0, Number(e.total) || 0, e.file_name);
+};
+
+// Populate and wire the Wisp relay picker. Switching relays reloads the page
+// with ?relay_url= (the relay must be set when v86's net device is created).
+function setupRelayPicker(registry, currentRelay) {
+  const sel = document.getElementById("relay");
+  if (!sel) return;
+  const list = Array.isArray(registry.relays) && registry.relays.length
+    ? registry.relays
+    : [{ url: registry.relay || "wisps://anura.pro/", label: "default" }];
+
+  sel.innerHTML = "";
+  let matched = false;
+  for (const r of list) {
+    const opt = document.createElement("option");
+    opt.value = r.url;
+    opt.textContent = r.label || r.url;
+    if (r.url === currentRelay) { opt.selected = true; matched = true; }
+    sel.appendChild(opt);
+  }
+  // If the active relay (e.g. from ?relay_url=) isn't a preset, show it too.
+  if (!matched) {
+    const opt = document.createElement("option");
+    opt.value = currentRelay;
+    opt.textContent = currentRelay + " (current)";
+    opt.selected = true;
+    sel.appendChild(opt);
+  }
+  const customOpt = document.createElement("option");
+  customOpt.value = "__custom__";
+  customOpt.textContent = "Custom\u2026";
+  sel.appendChild(customOpt);
+
+  sel.addEventListener("change", () => {
+    let next = sel.value;
+    if (next === "__custom__") {
+      next = (window.prompt("Wisp relay URL (wisps:// or wss://):", currentRelay) || "").trim();
+      if (!next) { sel.value = currentRelay; return; }
+    }
+    if (next === currentRelay) return;
+    const u = new URL(location.href);
+    u.searchParams.set("relay_url", next);
+    location.assign(u.toString());
+  });
 }
 
 // Prepend the CDN host to a disk descriptor's url (unless it is already absolute).
@@ -75,6 +165,7 @@ async function main() {
   const cfg = entry.config || {};
 
   netEl.textContent = `Wisp: ${relayUrl}`;
+  setupRelayPicker(registry, relayUrl);
 
   const opts = {
     wasm_path: "vendor/v86.wasm",
@@ -140,11 +231,8 @@ async function main() {
 
   let bootStarted = false;
   emulator.add_listener("download-progress", (e) => {
-    if (bootStarted) return;
-    if (e.file_name && e.total) {
-      const pct = Math.floor((100 * e.loaded) / e.total);
-      setStatus(`Downloading ${shortName(e.file_name)} \u2014 ${pct}%`, "busy");
-    }
+    if (bootStarted || !e) return;
+    showProgress(Number(e.loaded) || 0, Number(e.total) || 0, e.file_name);
   });
 
   emulator.add_listener("emulator-ready", () => {
@@ -153,6 +241,7 @@ async function main() {
 
   emulator.add_listener("emulator-started", () => {
     bootStarted = true;
+    hideProgress();
     setStatus("Running", "ok");
     // Some guests (e.g. DSL's Syslinux) pause at an interactive boot prompt and
     // require a keypress to continue. `autokeys` lets the registry boot them

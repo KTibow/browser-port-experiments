@@ -52,6 +52,11 @@ scripts/build.mjs ── assembles dist/ and generates index.html from the regis
 Networking path: guest NIC → v86 (handles DHCP/DNS-over-HTTPS/ARP locally, wraps
 TCP in Wisp) → `wss://anura.pro` → the real internet.
 
+The runner also shows a **loading progress bar** while the OS image / saved state
+streams in (helpful for the multi-hundred-MB images), and a **Wisp relay picker**
+so you can switch relays (default `anura.pro`, plus `wisp.mercurywork.shop` or a
+custom one) if the default is blocked — it reloads with `?relay_url=`.
+
 ## Develop locally
 
 ```bash
@@ -87,6 +92,7 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
 - `@livecd` — SliTaz live-boots to its graphical Openbox desktop (Midori/WebKit)
 - `@slow` — Android 4.4 boots to the launcher (~4-5 min; streams ~250 MB)
 - `@network` — boots Linux, DHCP, and `wget`s a live page over Wisp
+- `@ux` — the loading progress bar and the Wisp relay picker (offline/deterministic)
 
 `node scripts/probe.mjs <osId>` boots a single OS and saves a screenshot to
 `/tmp/probe-shots/` — handy for eyeballing a new image (needs `npm run serve`).

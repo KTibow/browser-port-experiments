@@ -20,6 +20,8 @@
       <span id="net" class="bar__net"></span>
     </div>
     <div class="bar__controls">
+      <label class="bar__relaylabel" for="relay" title="Switch the Wisp networking relay (applies on reload)">Relay</label>
+      <select id="relay" class="bar__relay" title="Switch the Wisp networking relay (applies on reload)"></select>
       <input id="sendtext" placeholder="type into guest&hellip; (Enter)" autocomplete="off" />
       <button id="sendbtn" title="Send text to the guest">Send</button>
       <button id="ctrlaltdel" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
@@ -27,6 +29,11 @@
       <button id="restart" title="Reboot the machine">Restart</button>
       <button id="fullscreen" title="Fullscreen the screen">Fullscreen</button>
     </div>
+  </div>
+
+  <div id="progress" class="progress" hidden>
+    <div id="progress_bar" class="progress__bar"></div>
+    <span id="progress_label" class="progress__label"></span>
   </div>
 
   <div id="hint" class="hint" hidden></div>

@@ -2,6 +2,11 @@
   "$comment": "Registry of browsers/OSes ported to the web via v86 (WASM CPU + canvas + Wisp networking). Image URLs are relative to the CDN host (default https://i.copy.sh/, overridable with ?cdn=). The `config` object mirrors v86 constructor options; the runner prepends the CDN host to every disk/state `url`. An image may also carry a `mirror` path (resilience: a same-origin copy under dist/mirror/); the runner prefers it unless a `?cdn=` is forced.",
   "cdn": "https://i.copy.sh/",
   "relay": "wisps://anura.pro/",
+  "$relays_comment": "Wisp relays offered in the runner's relay picker (first = default). Each was verified to speak Wisp (sends the v1 CONTINUE handshake frame on connect). The runner also offers a Custom… option. v86 maps wisps:// → wss://.",
+  "relays": [
+    { "url": "wisps://anura.pro/", "label": "anura.pro (default)" },
+    { "url": "wisps://wisp.mercurywork.shop/", "label": "wisp.mercurywork.shop" }
+  ],
   "browsers": [
     {
       "id": "kolibrios",

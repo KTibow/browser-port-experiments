@@ -163,6 +163,54 @@ body.runner {
   cursor: pointer;
 }
 .bar__controls button:hover { background: #2d374e; border-color: var(--accent); }
+.bar__relaylabel { font-size: 0.78rem; color: var(--muted); }
+.bar__relay {
+  background: #0c0f17;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 0.33rem 0.4rem;
+  font-size: 0.8rem;
+  max-width: 15rem;
+  cursor: pointer;
+}
+.bar__relay:hover { border-color: var(--accent); }
+
+/* Thin download progress bar shown while the OS image / state streams in. */
+.progress {
+  position: relative;
+  height: 1.5rem;
+  background: #0c0f17;
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+}
+.progress__bar {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 0%;
+  background: linear-gradient(90deg, #2c4a86, #3b6fd6);
+  transition: width 0.2s ease;
+}
+.progress__bar.is-indeterminate {
+  width: 35% !important;
+  animation: progress-slide 1.1s linear infinite;
+}
+@keyframes progress-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(340%); }
+}
+.progress__label {
+  position: relative;
+  display: block;
+  padding: 0 0.8rem;
+  font-size: 0.78rem;
+  line-height: 1.5rem;
+  color: #dbe6fb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px #000a;
+}
 
 .hint {
   background: #1b2740;
