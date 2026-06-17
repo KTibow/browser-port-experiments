@@ -18,14 +18,14 @@ What it proves:
 - The framebuffer target can compile and link as a JS/WASM artifact using a local `emscripten` libnsfb surface patched into the build.
 - The full `nsfb.js` artifact is modularized as `createNetSurfFrameBuffer`, starts from the public page, enters an Emscripten browser main loop, and exports its live framebuffer pointer/width/height/stride plus input queue shims.
 - The public page copies NetSurf framebuffer frontend pixels (currently `-f emscripten -w 640 -h 480 about:blank`) into Canvas `ImageData` from libnsfb surface `update` dirty rectangles, coalesces callback bursts to one `requestAnimationFrame` paint, and stamps canvas/body dirty-rect metadata for smoke tests.
-- Canvas pointer movement/buttons, wheel, and a broader SDL/libnsfb-style keyboard subset (navigation, modifiers, function keys, numpad fallbacks, printable Latin-1) are queued into libnsfb events for the framebuffer frontend/fbtk path.
+- Canvas pointer movement/buttons, wheel, and a broader SDL/libnsfb-style keyboard subset (navigation, modifiers, function keys, numpad fallbacks, printable Latin-1) are queued into libnsfb events for the framebuffer frontend/fbtk path. The public bridge records bounded input history/modifier metadata and forwards Latin-1 `compositionend` text as key down/up fallback events for initial IME coverage.
 - The Emscripten filesystem now embeds `/netsurf` resources (`Messages`, `Choices`, default/internal/quirks/adblock CSS, welcome/credits/licence HTML, `netsurf.png`, `user.css`, and the core icons used by `resource:` fetches). The public page probes those files through exported `FS`, starts `about:welcome`, and the smoke test asserts recognizable English NetSurf chrome/about-page strings plus no missing-message/resource startup log.
 - The checked-in artifacts are intentionally offline: curl/networking, OpenSSL, JavaScript/Duktape, PNG/JPEG/WebP/JPEGXL, SVG, and freetype are disabled.
 
 What it does **not** prove yet:
 
 - No Wisp networking yet. HTTP(S) is disabled to avoid libcurl/OpenSSL while the framebuffer path is being established. The public page only documents the future `BrowserPortWisp` handoff and deliberately does not hard-code a Wisp endpoint into HTML or C/WASM.
-- Input is now wired at the libnsfb event level with deterministic Playwright coverage for click, wheel, and key forwarding; text composition/IME and exhaustive keycode coverage are not done.
+- Input is now wired at the libnsfb event level with deterministic Playwright coverage for click, wheel, key forwarding, right-modifier/function/navigation/numpad mappings, and synthetic Latin-1 composition fallback. Real browser-generated IME flows and exhaustive keycode coverage are not done.
 - The page no longer polls/copies the full framebuffer each animation frame; it depends on the dedicated Emscripten libnsfb surface `update` callback. The checked-in artifacts have been rebuilt from the externalized surface source patch and include cursor callbacks plus C-side dirty-rect coalescing; the checked-in page also coalesces dirty callbacks before canvas painting.
 
 ## Toolchain path
@@ -112,11 +112,11 @@ ports/netsurf/scripts/verify-artifact.sh
 npm test
 ```
 
-The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, probes embedded `/netsurf` resources for English `Messages` and `about:welcome` text, asserts deterministic raster glyph signatures for the visible toolbar/address chrome and the `about:welcome` heading/body line bands, asserts the startup log has no missing translation/resource messages, samples deterministic NetSurf chrome/content pixels, and performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata.
+The Playwright smoke test opens `/browser-port-experiments/browsers/netsurf/`, waits for `body[data-netsurf-framebuffer-visible="true"]`, asserts that dirty-rect callback/paint accounting is consistent, verifies deterministic libnsfb cursor metadata, probes embedded `/netsurf` resources for English `Messages` and `about:welcome` text, asserts deterministic raster glyph signatures for the visible toolbar/address chrome and the `about:welcome` heading/body line bands, asserts the startup log has no missing translation/resource messages, samples deterministic NetSurf chrome/content pixels, performs a deterministic click/wheel/key sequence that must advance the libnsfb/fbtk input queue metadata, and then verifies expanded input history for right Control, F5, PageDown, NumpadAdd, and Latin-1 `compositionend` fallback characters.
 
 ## Suggested next steps
 
 1. Expand visible raster assertions to more chrome/about regions (for example blue link glyphs, icon bitmaps, and scroll-dependent text) beyond the current deterministic toolbar/address/heading/body glyph signatures.
-2. Expand canvas input coverage (IME/text input, modifier state, more keycodes) and identify additional deterministic UI interactions beyond the current click/wheel/key/cursor metadata coverage.
+2. Expand canvas input coverage from the current synthetic composition/modifier/keycode checks toward real browser IME/text input events and identify additional deterministic UI interactions beyond the current click/wheel/key/cursor metadata coverage.
 3. Re-enable PNG/JPEG via Emscripten ports or vendored libraries after the dirty-rect path remains stable.
 4. Design a Wisp-backed fetcher before re-enabling HTTP(S); do not bake `wss://anura.pro/` into C code.

@@ -79,7 +79,8 @@
         inputBridge: 'waiting for WASM',
         inputEventsForwarded: 0,
         lastInputEvent: null,
-        keyboardLayout: 'SDL/libnsfb keycode subset plus printable Latin-1 and numpad fallbacks',
+        inputEventHistory: [],
+        keyboardLayout: 'SDL/libnsfb keycode subset plus printable Latin-1, numpad, modifier, navigation, function-key, and IME composition fallbacks',
         cursor: null,
         dirtyRectCallbacksObserved: 0,
         dirtyRectsObserved: 0,
@@ -247,8 +248,27 @@
       }
 
       function rememberInput(type, detail) {
-        framebufferState.lastInputEvent = { type, detail, at: performance.now() };
+        const event = { type, detail, at: performance.now() };
+        framebufferState.lastInputEvent = event;
+        framebufferState.inputEventHistory.push(event);
+        if (framebufferState.inputEventHistory.length > 40) framebufferState.inputEventHistory.shift();
         document.body.dataset.netsurfFramebufferLastInput = type;
+      }
+
+      function keyEventDetail(event, nsfb) {
+        return {
+          key: event.key,
+          code: event.code,
+          nsfb,
+          location: event.location,
+          repeat: event.repeat,
+          modifiers: {
+            alt: event.altKey,
+            ctrl: event.ctrlKey,
+            meta: event.metaKey,
+            shift: event.shiftKey,
+          },
+        };
       }
 
       function probePackagedResources(module) {
@@ -331,13 +351,29 @@
           const code = keyCodeFromEvent(event);
           if (!code) return;
           event.preventDefault();
-          forwarded(pushKey(1, code), 'keydown', { key: event.key, code: event.code, nsfb: code });
+          forwarded(pushKey(1, code), 'keydown', keyEventDetail(event, code));
         });
         canvas.addEventListener('keyup', (event) => {
           const code = keyCodeFromEvent(event);
           if (!code) return;
           event.preventDefault();
-          forwarded(pushKey(0, code), 'keyup', { key: event.key, code: event.code, nsfb: code });
+          forwarded(pushKey(0, code), 'keyup', keyEventDetail(event, code));
+        });
+        canvas.addEventListener('compositionend', (event) => {
+          const text = event.data || '';
+          let forwardedCharacters = 0;
+          for (const [index, char] of Array.from(text).entries()) {
+            const code = char.codePointAt(0);
+            if (!code || code > 255) continue;
+            const detail = { text, char, index, nsfb: code, source: 'compositionend' };
+            forwarded(pushKey(1, code), 'composition-keydown', detail);
+            if (pushKey(0, code)) {
+              forwardedCharacters += 1;
+              forwarded(1, 'composition-keyup', detail);
+            }
+          }
+          rememberInput('compositionend', { text, forwardedCharacters });
+          renderMetadata();
         });
       }
 

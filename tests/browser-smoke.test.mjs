@@ -547,7 +547,58 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(interaction.lastInputEvent.type, 'keyup');
     assert.equal(interaction.lastInputEvent.detail.key, 'a');
     assert.equal(interaction.lastInputEvent.detail.nsfb, 97);
+    assert.equal(interaction.lastInputEvent.detail.modifiers.shift, false);
     assert.equal(interaction.dataset, 'keyup');
+
+    const beforeExpandedInputCount = interaction.after;
+    await page.evaluate(() => {
+      const canvas = document.querySelector('#viewport');
+      canvas.focus();
+      const dispatch = (event) => canvas.dispatchEvent(event);
+      const keyEvents = [
+        ['keydown', { key: 'Control', code: 'ControlRight', location: KeyboardEvent.DOM_KEY_LOCATION_RIGHT, ctrlKey: true }],
+        ['keyup', { key: 'Control', code: 'ControlRight', location: KeyboardEvent.DOM_KEY_LOCATION_RIGHT }],
+        ['keydown', { key: 'F5', code: 'F5' }],
+        ['keyup', { key: 'F5', code: 'F5' }],
+        ['keydown', { key: 'PageDown', code: 'PageDown' }],
+        ['keyup', { key: 'PageDown', code: 'PageDown' }],
+        ['keydown', { key: '+', code: 'NumpadAdd', location: KeyboardEvent.DOM_KEY_LOCATION_NUMPAD }],
+        ['keyup', { key: '+', code: 'NumpadAdd', location: KeyboardEvent.DOM_KEY_LOCATION_NUMPAD }],
+      ];
+      for (const [type, init] of keyEvents) {
+        dispatch(new KeyboardEvent(type, { ...init, bubbles: true, cancelable: true }));
+      }
+      dispatch(new CompositionEvent('compositionend', { data: 'éZ', bubbles: true, cancelable: true }));
+    });
+    const expandedInputCoverage = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.inputEventsForwarded < before + 12 || state.lastInputEvent?.type !== 'compositionend') return null;
+        return {
+          before,
+          after: state.inputEventsForwarded,
+          lastInputEvent: state.lastInputEvent,
+          history: state.inputEventHistory.slice(-16).map(({ type, detail }) => ({ type, detail })),
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+        };
+      },
+      beforeExpandedInputCount,
+    ).then((handle) => handle.jsonValue());
+    assert.equal(expandedInputCoverage.dataset, 'compositionend');
+    assert.ok(expandedInputCoverage.after >= beforeExpandedInputCount + 12, `expected expanded modifier/navigation/numpad/IME forwarding, got ${JSON.stringify(expandedInputCoverage)}`);
+    assert.deepEqual(expandedInputCoverage.lastInputEvent.detail, { text: 'éZ', forwardedCharacters: 2 });
+    const expandedByTypeAndCode = new Map(
+      expandedInputCoverage.history
+        .filter((event) => event.detail && Number.isFinite(event.detail.nsfb))
+        .map((event) => [`${event.type}:${event.detail.nsfb}`, event.detail]),
+    );
+    assert.equal(expandedByTypeAndCode.get('keydown:305')?.code, 'ControlRight', `expected right Control modifier mapping, got ${JSON.stringify(expandedInputCoverage)}`);
+    assert.equal(expandedByTypeAndCode.get('keydown:305')?.modifiers.ctrl, true, `expected modifier state capture, got ${JSON.stringify(expandedInputCoverage)}`);
+    assert.equal(expandedByTypeAndCode.get('keyup:286')?.key, 'F5', `expected function-key mapping, got ${JSON.stringify(expandedInputCoverage)}`);
+    assert.equal(expandedByTypeAndCode.get('keyup:281')?.key, 'PageDown', `expected navigation-key mapping, got ${JSON.stringify(expandedInputCoverage)}`);
+    assert.equal(expandedByTypeAndCode.get('keyup:270')?.code, 'NumpadAdd', `expected numpad operator mapping, got ${JSON.stringify(expandedInputCoverage)}`);
+    assert.equal(expandedByTypeAndCode.get('composition-keyup:233')?.char, 'é', `expected Latin-1 IME composition mapping, got ${JSON.stringify(expandedInputCoverage)}`);
+    assert.equal(expandedByTypeAndCode.get('composition-keyup:90')?.char, 'Z', `expected ASCII IME composition mapping, got ${JSON.stringify(expandedInputCoverage)}`);
   } finally {
     await closePage(page);
   }
