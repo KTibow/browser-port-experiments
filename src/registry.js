@@ -11,7 +11,7 @@ export const browsers = [
       'A small browser UI with URL bar, history, reload, home, and an iframe viewport. It is useful as a control and UX harness while real WASM engines land.',
     engine: 'Host browser iframe',
     networking: 'Host browser networking; Wisp endpoint is stored for ports that need a socket bridge.',
-    tested: 'Build smoke test plus registry invariants.',
+    tested: 'Production build, registry invariants, and Playwright Chromium route smoke test.',
     limitations: [
       'Sites that set X-Frame-Options or CSP frame-ancestors will refuse to load.',
       'It reuses the host browser engine instead of porting an independent engine.',

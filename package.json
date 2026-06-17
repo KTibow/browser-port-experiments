@@ -7,11 +7,15 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "npm run build && node --test tests/*.test.mjs"
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:unit": "node --test tests/registry.test.mjs",
+    "test:smoke": "npm run build && node --test tests/browser-smoke.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-legacy": "latest",
     "vite": "latest"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "playwright-core": "^1.61.0"
+  }
 }
