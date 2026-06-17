@@ -137,6 +137,55 @@ async function readNetSurfAddressBarMetrics(page) {
   return readNetSurfRegionMetrics(page, { x: 95, y: 3, width: 520, height: 28 });
 }
 
+async function waitForNetSurfToolbarNavigationMetrics(page, expected, beforeDirtyRects) {
+  return page.waitForFunction(
+    ({ expectedMetrics, minimumDirtyRects }) => {
+      const state = window.netsurfFramebufferState;
+      if (!state || state.dirtyRectsObserved <= minimumDirtyRects) return null;
+      const canvas = document.querySelector('#viewport');
+      if (!canvas) return null;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const metricsFor = ({ x, y, width, height }) => {
+        const { data } = ctx.getImageData(x, y, width, height);
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        return { black, nonGrey, nonWhite, hash };
+      };
+      const regions = {
+        toolbar: { x: 0, y: 0, width: 95, height: 36 },
+        address: { x: 95, y: 3, width: 520, height: 28 },
+        content: { x: 0, y: 36, width: 640, height: 426 },
+      };
+      const metrics = Object.fromEntries(
+        Object.entries(regions).map(([name, region]) => [name, metricsFor(region)]),
+      );
+      const stable = Object.entries(expectedMetrics).every(([name, expectedMetric]) => (
+        Object.entries(expectedMetric).every(([key, value]) => metrics[name][key] === value)
+      ));
+      return stable ? {
+        dirtyRectsObserved: state.dirtyRectsObserved,
+        inputEventsForwarded: state.inputEventsForwarded,
+        inputEventsDelivered: state.inputEventsDelivered,
+        lastInputEvent: state.lastInputEvent,
+        metrics,
+      } : null;
+    },
+    { expectedMetrics: expected, minimumDirtyRects: beforeDirtyRects },
+    { timeout: 10_000 },
+  ).then((handle) => handle.jsonValue());
+}
+
 async function waitForNetSurfVisibleTextSignatures(page) {
   return page.waitForFunction(() => {
     const canvas = document.querySelector('#viewport');
@@ -473,6 +522,50 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.deepEqual(result.blankPage, [255, 255, 255, 255], `expected deterministic about:blank content pixel, got ${JSON.stringify(result)}`);
 
     const canvasLocator = page.locator('#viewport');
+    const beforeToolbarBackDirtyRects = result.state.dirtyRectsObserved;
+    await clickNetSurfCanvasPixel(canvasLocator, 30, 15);
+    const toolbarBackNavigation = await waitForNetSurfToolbarNavigationMetrics(
+      page,
+      {
+        toolbar: { black: 46, nonGrey: 3420, nonWhite: 3420, hash: 2020031204 },
+        address: { black: 0, nonGrey: 14560, nonWhite: 14560, hash: 1016345560 },
+        content: { black: 596, nonGrey: 267611, nonWhite: 266865, hash: 651458069 },
+      },
+      beforeToolbarBackDirtyRects,
+    );
+    assert.equal(toolbarBackNavigation.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(toolbarBackNavigation.lastInputEvent.detail, { button: 0 });
+    assert.ok(toolbarBackNavigation.inputEventsForwarded >= result.state.inputEventsForwarded + 3, `expected toolbar back click forwarding, got ${JSON.stringify(toolbarBackNavigation)}`);
+    assert.deepEqual(
+      toolbarBackNavigation.metrics,
+      {
+        toolbar: { black: 46, nonGrey: 3420, nonWhite: 3420, hash: 2020031204 },
+        address: { black: 0, nonGrey: 14560, nonWhite: 14560, hash: 1016345560 },
+        content: { black: 596, nonGrey: 267611, nonWhite: 266865, hash: 651458069 },
+      },
+      `expected NetSurf toolbar Back action to visibly navigate away from about:welcome chrome/content, got ${JSON.stringify(toolbarBackNavigation)}`,
+    );
+
+    await clickNetSurfCanvasPixel(canvasLocator, 45, 15);
+    const toolbarForwardRestoredSignatures = await waitForNetSurfVisibleTextSignatures(page);
+    assert.deepEqual(
+      {
+        toolbarChrome: { count: toolbarForwardRestoredSignatures.toolbarChrome.count, hash: toolbarForwardRestoredSignatures.toolbarChrome.hash },
+        addressChrome: { count: toolbarForwardRestoredSignatures.addressChrome.count, hash: toolbarForwardRestoredSignatures.addressChrome.hash },
+        welcomeLogoBitmap: { count: toolbarForwardRestoredSignatures.welcomeLogoBitmap.count, hash: toolbarForwardRestoredSignatures.welcomeLogoBitmap.hash },
+      },
+      {
+        toolbarChrome: { count: 262, hash: 1066696110 },
+        addressChrome: { count: 1607, hash: 460374291 },
+        welcomeLogoBitmap: { count: 3287, hash: 736990473 },
+      },
+      `expected NetSurf toolbar Forward action to visibly restore about:welcome, got ${JSON.stringify(toolbarForwardRestoredSignatures)}`,
+    );
+    assert.ok(
+      (await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved)) > toolbarBackNavigation.dirtyRectsObserved,
+      `expected toolbar forward restore to preserve dirty-rect advancement, got ${JSON.stringify(toolbarBackNavigation)}`,
+    );
+
     await hoverNetSurfCanvasPixel(canvasLocator, 320, 240);
     await page.waitForFunction(() => {
       const rect = window.netsurfFramebufferState?.cursor?.rect;
