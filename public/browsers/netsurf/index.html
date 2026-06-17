@@ -87,6 +87,7 @@
         lastInputEvent: null,
         inputEventHistory: [],
         compositionSession: { active: false, text: '', updates: 0, trusted: false },
+        compositionCommit: { text: '', source: '', forwardedCharacters: 0, duplicateBeforeinputSuppressed: false, at: 0, trusted: false },
         keyboardLayout: 'SDL/libnsfb keycode subset plus printable Latin-1, numpad, modifier, navigation, function-key, browser beforeinput text, and IME composition fallbacks',
         cursor: null,
         dirtyRectCallbacksObserved: 0,
@@ -119,6 +120,7 @@
           <dt>Geometry</dt><dd>${framebufferState.width || '?'} × ${framebufferState.height || '?'}; stride ${framebufferState.stride || '?'} bytes</dd>
           <dt>WASM pointer</dt><dd>${framebufferState.ptr ? `0x${framebufferState.ptr.toString(16)}` : 'waiting'}</dd>
           <dt>Input bridge</dt><dd>${framebufferState.inputBridge}; forwarded ${framebufferState.inputEventsForwarded}, delivered to fbtk ${framebufferState.inputEventsDelivered}, pending ${framebufferState.inputEventsPending}, dropped ${framebufferState.inputEventsDropped}${framebufferState.lastInputEvent ? `; last ${framebufferState.lastInputEvent.type}` : ''}</dd>
+          <dt>IME commit guard</dt><dd>${framebufferState.compositionCommit.source ? `${framebufferState.compositionCommit.source} ${JSON.stringify(framebufferState.compositionCommit.text)}; forwarded ${framebufferState.compositionCommit.forwardedCharacters}; duplicate beforeinput suppressed ${framebufferState.compositionCommit.duplicateBeforeinputSuppressed ? 'yes' : 'no'}` : 'waiting for composition commit'}</dd>
           <dt>Dirty rects</dt><dd>${framebufferState.dirtyRectsObserved} painted from ${framebufferState.dirtyRectCallbacksObserved} callbacks${framebufferState.lastDirtyRect ? `; last ${framebufferState.lastDirtyRect.join(',')}` : ''}</dd>
           <dt>Cursor hook</dt><dd>${framebufferState.cursor ? `${framebufferState.cursor.rect.join(',')} hotspot ${framebufferState.cursor.hotspot.join(',')}` : 'waiting for libnsfb cursor callback'}</dd>
           <dt>Resources</dt><dd>${framebufferState.resourcePackage ? `${framebufferState.resourcePackage.status}; ${framebufferState.resourcePackage.recognizableText.join(' / ')}` : 'waiting for embedded /netsurf package'}</dd>
@@ -430,6 +432,14 @@
               trusted: event.isTrusted,
             };
             const forwardedCharacters = forwardTextCharacters(text, 'compositionend', 'composition');
+            framebufferState.compositionCommit = {
+              text,
+              source: 'compositionend',
+              forwardedCharacters,
+              duplicateBeforeinputSuppressed: false,
+              at: performance.now(),
+              trusted: event.isTrusted,
+            };
             rememberInput('compositionend', {
               text,
               trusted: event.isTrusted,
@@ -443,12 +453,28 @@
           const text = event.data || '';
           if (event.cancelable) event.preventDefault();
           const isCompositionUpdate = event.isComposing || event.inputType === 'insertCompositionText';
-          const forwardedCharacters = isCompositionUpdate ? 0 : forwardTextCharacters(text, 'beforeinput', 'beforeinput');
-          if (!isCompositionUpdate && framebufferState.compositionSession?.active) {
-            framebufferState.compositionSession = {
-              ...framebufferState.compositionSession,
-              active: false,
+          const duplicateCompositionCommit = !isCompositionUpdate
+            && event.inputType === 'insertText'
+            && text
+            && framebufferState.compositionCommit?.source === 'compositionend'
+            && framebufferState.compositionCommit.text === text
+            && performance.now() - framebufferState.compositionCommit.at < 1000;
+          const forwardedCharacters = isCompositionUpdate || duplicateCompositionCommit ? 0 : forwardTextCharacters(text, 'beforeinput', 'beforeinput');
+          if (!isCompositionUpdate) {
+            if (framebufferState.compositionSession?.active) {
+              framebufferState.compositionSession = {
+                ...framebufferState.compositionSession,
+                active: false,
+                text,
+                trusted: event.isTrusted,
+              };
+            }
+            framebufferState.compositionCommit = {
               text,
+              source: duplicateCompositionCommit ? 'beforeinput-duplicate' : 'beforeinput',
+              forwardedCharacters,
+              duplicateBeforeinputSuppressed: duplicateCompositionCommit,
+              at: performance.now(),
               trusted: event.isTrusted,
             };
           }
@@ -459,6 +485,7 @@
             trusted: event.isTrusted,
             compositionActive: Boolean(framebufferState.compositionSession?.active),
             forwardedCharacters,
+            duplicateCompositionCommit,
           });
           textInputProxy.value = '';
           renderMetadata();

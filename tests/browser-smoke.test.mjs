@@ -1078,7 +1078,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     );
     assert.deepEqual(
       browserBeforeInputCoverage.lastInputEvent.detail,
-      { text: 'é', inputType: 'insertText', isComposing: false, trusted: true, compositionActive: false, forwardedCharacters: 1 },
+      { text: 'é', inputType: 'insertText', isComposing: false, trusted: true, compositionActive: false, forwardedCharacters: 1, duplicateCompositionCommit: false },
       `expected trusted browser-generated beforeinput metadata, got ${JSON.stringify(browserBeforeInputCoverage)}`,
     );
     const browserBeforeInputByTypeAndCode = new Map(
@@ -1146,7 +1146,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     );
     assert.deepEqual(
       trustedImeCompositionCoverage.lastInputEvent.detail,
-      { text: 'é', inputType: 'insertCompositionText', isComposing: true, trusted: true, compositionActive: true, forwardedCharacters: 0 },
+      { text: 'é', inputType: 'insertCompositionText', isComposing: true, trusted: true, compositionActive: true, forwardedCharacters: 0, duplicateCompositionCommit: false },
       `expected trusted Chromium IME insertCompositionText metadata, got ${JSON.stringify(trustedImeCompositionCoverage)}`,
     );
     assert.equal(trustedImeCompositionCoverage.compositionSession.active, true);
@@ -1203,7 +1203,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(trustedImeCommitCoverage.compositionSession.active, false);
     assert.deepEqual(
       trustedImeCommitCoverage.lastInputEvent.detail,
-      { text: 'é', inputType: 'insertText', isComposing: false, trusted: true, compositionActive: false, forwardedCharacters: 1 },
+      { text: 'é', inputType: 'insertText', isComposing: false, trusted: true, compositionActive: false, forwardedCharacters: 1, duplicateCompositionCommit: false },
       `expected committed trusted IME text metadata, got ${JSON.stringify(trustedImeCommitCoverage)}`,
     );
     const trustedImeByTypeAndCode = new Map(
@@ -1213,6 +1213,99 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     );
     assert.equal(trustedImeByTypeAndCode.get('beforeinput-keydown:233')?.char, 'é', `expected trusted IME commit keydown mapping, got ${JSON.stringify(trustedImeCommitCoverage)}`);
     assert.equal(trustedImeByTypeAndCode.get('beforeinput-keyup:233')?.source, 'beforeinput', `expected trusted IME commit keyup mapping, got ${JSON.stringify(trustedImeCommitCoverage)}`);
+
+    const beforeDuplicateImeCommit = await page.evaluate(() => ({
+      inputEventsForwarded: window.netsurfFramebufferState.inputEventsForwarded,
+      dirtyRectsObserved: window.netsurfFramebufferState.dirtyRectsObserved,
+      address: (() => {
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const data = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        return { black, nonGrey, nonWhite, hash };
+      })(),
+    }));
+    await page.evaluate(() => {
+      const target = document.querySelector('#netsurf-text-input');
+      target.focus({ preventScroll: true });
+      target.dispatchEvent(new CompositionEvent('compositionstart', { data: '', bubbles: true, cancelable: true }));
+      target.dispatchEvent(new CompositionEvent('compositionupdate', { data: 'y', bubbles: true, cancelable: true }));
+      target.dispatchEvent(new CompositionEvent('compositionend', { data: 'y', bubbles: true, cancelable: true }));
+      target.dispatchEvent(new InputEvent('beforeinput', { data: 'y', inputType: 'insertText', bubbles: true, cancelable: true }));
+    });
+    const duplicateImeCommitCoverage = await page.waitForFunction(
+      (before) => {
+        const state = window.netsurfFramebufferState;
+        if (!state || state.lastInputEvent?.type !== 'beforeinput') return null;
+        if (state.inputEventsForwarded !== before.inputEventsForwarded + 2) return null;
+        if (state.dirtyRectsObserved <= before.dirtyRectsObserved) return null;
+        const lastDetail = state.lastInputEvent.detail;
+        if (!lastDetail?.duplicateCompositionCommit || lastDetail.forwardedCharacters !== 0) return null;
+        const canvas = document.querySelector('#viewport');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const data = ctx.getImageData(95, 3, 520, 28).data;
+        let black = 0;
+        let nonGrey = 0;
+        let nonWhite = 0;
+        let hash = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const red = data[i];
+          const green = data[i + 1];
+          const blue = data[i + 2];
+          if (red < 16 && green < 16 && blue < 16) black += 1;
+          if (!(red === 221 && green === 221 && blue === 221)) nonGrey += 1;
+          if (red < 245 || green < 245 || blue < 245) nonWhite += 1;
+          hash = (hash * 31 + red * 3 + green * 5 + blue * 7) >>> 0;
+        }
+        const address = { black, nonGrey, nonWhite, hash };
+        const addressChangedOnce = Object.entries(before.address).some(([key, value]) => address[key] !== value);
+        if (!addressChangedOnce) return null;
+        return {
+          before,
+          after: state.inputEventsForwarded,
+          dirtyAfter: state.dirtyRectsObserved,
+          lastInputEvent: state.lastInputEvent,
+          compositionCommit: state.compositionCommit,
+          compositionSession: state.compositionSession,
+          history: state.inputEventHistory.slice(-8).map(({ type, detail }) => ({ type, detail })),
+          address,
+          dataset: document.body.dataset.netsurfFramebufferLastInput,
+        };
+      },
+      beforeDuplicateImeCommit,
+    ).then((handle) => handle.jsonValue());
+    assert.equal(duplicateImeCommitCoverage.after, beforeDuplicateImeCommit.inputEventsForwarded + 2, `expected duplicate real-browser IME beforeinput commit to be suppressed after compositionend fallback, got ${JSON.stringify(duplicateImeCommitCoverage)}`);
+    assert.equal(duplicateImeCommitCoverage.dataset, 'beforeinput');
+    assert.deepEqual(
+      duplicateImeCommitCoverage.lastInputEvent.detail,
+      { text: 'y', inputType: 'insertText', isComposing: false, trusted: false, compositionActive: false, forwardedCharacters: 0, duplicateCompositionCommit: true },
+      `expected duplicate IME beforeinput metadata, got ${JSON.stringify(duplicateImeCommitCoverage)}`,
+    );
+    assert.deepEqual(
+      duplicateImeCommitCoverage.compositionCommit,
+      { text: 'y', source: 'beforeinput-duplicate', forwardedCharacters: 0, duplicateBeforeinputSuppressed: true, at: duplicateImeCommitCoverage.compositionCommit.at, trusted: false },
+      `expected duplicate IME commit guard metadata, got ${JSON.stringify(duplicateImeCommitCoverage)}`,
+    );
+    assert.ok(Number.isFinite(duplicateImeCommitCoverage.compositionCommit.at), `expected duplicate IME commit guard timestamp, got ${JSON.stringify(duplicateImeCommitCoverage)}`);
+    const duplicateImeByTypeAndCode = new Map(
+      duplicateImeCommitCoverage.history
+        .filter((event) => event.detail && Number.isFinite(event.detail.nsfb))
+        .map((event) => [`${event.type}:${event.detail.nsfb}`, event.detail]),
+    );
+    assert.equal(duplicateImeByTypeAndCode.get('composition-keydown:121')?.char, 'y', `expected compositionend fallback to forward y once, got ${JSON.stringify(duplicateImeCommitCoverage)}`);
+    assert.equal(duplicateImeByTypeAndCode.get('composition-keyup:121')?.source, 'compositionend', `expected duplicate beforeinput not to add a second y keyup, got ${JSON.stringify(duplicateImeCommitCoverage)}`);
 
     const beforeToolbarInputCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsForwarded);
     await clickNetSurfCanvasPixel(canvasLocator, 75, 15);
