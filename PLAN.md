@@ -138,3 +138,12 @@ single relay going unless there's clearly parallelizable, conflict-free work.
   suite. Verified: KolibriOS graphical boot, Windows 98 state restore, and
   end-to-end Wisp fetch of a live page. Discovered & fixed the CDN Referer 403
   (no-referrer) and the ne2k-vs-virtio NIC issue. Queued tasks above.
+- 2026-06-17 — **orchestrator (run #1, cont.)**: Owner installed the workflows.
+  Verified Windows 2000 (IE5 + K-Meleon + Lynx + Retrozilla) and Haiku
+  (WebPositive + Links) restore from state; added per-OS browsing hints + a hint
+  bar. Deployed and **verified the LIVE production site**
+  (https://kendell.dev/browser-port-experiments/): KolibriOS boots in ~13s, Wisp
+  connected, 0 page errors. Documented the manual `gh workflow run "Deploy Pages"`
+  step. Site is live with 8 browsers (4 verified). Spawned the next worker.
+  Next up (task queue): verify ReactOS/SerenityOS/DSL/Windows ME; fix SerenityOS
+  part URLs; per-OS "loads a page" automation.
