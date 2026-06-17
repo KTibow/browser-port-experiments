@@ -2012,6 +2012,81 @@ async function revealNetSurfWelcomeSearchForm(page, canvasLocator) {
   return searchFormRevealed;
 }
 
+test('NetSurf about:welcome lower link activation preserves offline content with deterministic rasters', { timeout: 25_000 }, async () => {
+  const page = await newAppPage();
+  try {
+    await page.goto(`${APP_URL}browsers/netsurf/`, { waitUntil: 'domcontentloaded' });
+    await page.locator('body[data-netsurf-framebuffer-visible="true"]').waitFor({ state: 'attached' });
+    await page.locator('#viewport').waitFor({ state: 'visible' });
+    await waitForNetSurfVisibleTextSignatures(page);
+
+    const canvasLocator = page.locator('#viewport');
+    const searchFormRevealed = await revealNetSurfWelcomeSearchForm(page, canvasLocator);
+
+    await hoverNetSurfCanvasPixel(canvasLocator, 240, 310);
+    const lowerLinkHover = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 711, nonGrey: 2015, nonWhite: 11160, hash: 3767898530 },
+        },
+      },
+      searchFormRevealed.dirtyRectsObserved,
+    );
+    assert.equal(lowerLinkHover.lastInputEvent.type, 'pointermove');
+    assert.deepEqual(lowerLinkHover.cursor.hotspot, [4, 0], `expected alternate scroll-revealed about:welcome link hover to expose NetSurf's hand cursor, got ${JSON.stringify(lowerLinkHover)}`);
+    assert.equal(lowerLinkHover.cursor.rect[2] - lowerLinkHover.cursor.rect[0], 16, `expected alternate lower-link hand cursor width, got ${JSON.stringify(lowerLinkHover)}`);
+    assert.equal(lowerLinkHover.cursor.rect[3] - lowerLinkHover.cursor.rect[1], 22, `expected alternate lower-link hand cursor height, got ${JSON.stringify(lowerLinkHover)}`);
+    assert.deepEqual(
+      lowerLinkHover.metrics.status,
+      { black: 711, nonGrey: 2015, nonWhite: 11160, hash: 3767898530 },
+      `expected alternate scroll-revealed about:welcome link hover to rasterize a distinct status-bar URL, got ${JSON.stringify(lowerLinkHover)}`,
+    );
+
+    const beforeLowerLinkActivationCount = lowerLinkHover.inputEventsForwarded;
+    await clickNetSurfCanvasPixel(canvasLocator, 240, 310);
+    const lowerLinkActivation = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        status: {
+          region: { x: 0, y: 462, width: 620, height: 18 },
+          metrics: { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+        },
+        address: {
+          region: { x: 95, y: 3, width: 520, height: 28 },
+          metrics: { black: 1503, nonGrey: 12610, nonWhite: 4129, hash: 452212341 },
+        },
+        content: {
+          region: { x: 0, y: 36, width: 640, height: 426 },
+          metrics: { black: 844, nonGrey: 268532, nonWhite: 65617, hash: 3824838336 },
+        },
+        linkStripe: {
+          region: { x: 20, y: 250, width: 590, height: 130 },
+          metrics: { black: 448, nonGrey: 76700, nonWhite: 15625, hash: 1376735688 },
+        },
+      },
+      lowerLinkHover.dirtyRectsObserved,
+    );
+    assert.equal(lowerLinkActivation.lastInputEvent.type, 'pointerup-button');
+    assert.deepEqual(lowerLinkActivation.lastInputEvent.detail, { button: 0 });
+    assert.ok(lowerLinkActivation.inputEventsForwarded >= beforeLowerLinkActivationCount + 3, `expected alternate lower-link activation click forwarding, got ${JSON.stringify(lowerLinkActivation)}`);
+    assert.equal(lowerLinkActivation.inputEventsDropped, 0, `expected no dropped input events through alternate lower-link activation, got ${JSON.stringify(lowerLinkActivation)}`);
+    assert.deepEqual(
+      lowerLinkActivation.metrics,
+      {
+        status: { black: 285, nonGrey: 1589, nonWhite: 11160, hash: 1681376340 },
+        address: { black: 1503, nonGrey: 12610, nonWhite: 4129, hash: 452212341 },
+        content: { black: 844, nonGrey: 268532, nonWhite: 65617, hash: 3824838336 },
+        linkStripe: { black: 448, nonGrey: 76700, nonWhite: 15625, hash: 1376735688 },
+      },
+      `expected alternate lower about:welcome link activation to visibly update status/address while preserving offline content bands, got ${JSON.stringify(lowerLinkActivation)}`,
+    );
+  } finally {
+    await closePage(page);
+  }
+});
+
 test('NetSurf about:welcome search form exposes deterministic focus, typing, and submit rasters', { timeout: 25_000 }, async () => {
   const page = await newAppPage();
   try {
