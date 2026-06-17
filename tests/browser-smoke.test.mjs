@@ -2241,7 +2241,105 @@ test('NetSurf about:welcome search form exposes deterministic focus, typing, and
       `expected typed search text to visibly rasterize in the about:welcome search field, got ${JSON.stringify(searchTypedText)}`,
     );
 
-    const beforeSearchSubmitDirtyRects = searchTypedText.dirtyRectsObserved;
+    const beforeSearchBackspaceCount = searchTypedText.inputEventsForwarded;
+    await page.keyboard.press('Backspace');
+    const searchBackspaceEdit = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        searchInput: {
+          region: { x: 105, y: 188, width: 405, height: 30 },
+          metrics: { black: 82, nonGrey: 12150, nonWhite: 2302, hash: 912445780 },
+        },
+        searchPanel: {
+          region: { x: 65, y: 175, width: 505, height: 140 },
+          metrics: { black: 606, nonGrey: 70700, nonWhite: 38492, hash: 1938210838 },
+        },
+      },
+      searchTypedText.dirtyRectsObserved,
+    );
+    assert.equal(searchBackspaceEdit.lastInputEvent.type, 'keyup');
+    assert.equal(searchBackspaceEdit.lastInputEvent.detail.key, 'Backspace');
+    assert.equal(searchBackspaceEdit.lastInputEvent.detail.nsfb, 8);
+    assert.ok(searchBackspaceEdit.inputEventsForwarded >= beforeSearchBackspaceCount + 2, `expected about:welcome search Backspace editing to forward keydown/keyup events, got ${JSON.stringify(searchBackspaceEdit)}`);
+    assert.deepEqual(
+      searchBackspaceEdit.metrics.searchInput,
+      { black: 82, nonGrey: 12150, nonWhite: 2302, hash: 912445780 },
+      `expected Backspace to visibly remove one about:welcome search glyph, got ${JSON.stringify(searchBackspaceEdit)}`,
+    );
+
+    await page.keyboard.press('ArrowLeft');
+    const searchCaretLeft = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        searchInput: {
+          region: { x: 105, y: 188, width: 405, height: 30 },
+          metrics: { black: 76, nonGrey: 12150, nonWhite: 2295, hash: 3678718635 },
+        },
+        searchPanel: {
+          region: { x: 65, y: 175, width: 505, height: 140 },
+          metrics: { black: 600, nonGrey: 70700, nonWhite: 38485, hash: 437836191 },
+        },
+      },
+      searchBackspaceEdit.dirtyRectsObserved,
+    );
+    assert.equal(searchCaretLeft.lastInputEvent.type, 'keyup');
+    assert.equal(searchCaretLeft.lastInputEvent.detail.key, 'ArrowLeft');
+    assert.equal(searchCaretLeft.lastInputEvent.detail.nsfb, 276);
+    assert.deepEqual(
+      searchCaretLeft.metrics.searchInput,
+      { black: 76, nonGrey: 12150, nonWhite: 2295, hash: 3678718635 },
+      `expected ArrowLeft to visibly move the about:welcome search caret within the typed text, got ${JSON.stringify(searchCaretLeft)}`,
+    );
+
+    await page.keyboard.press('ArrowRight');
+    const searchCaretRight = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        searchInput: {
+          region: { x: 105, y: 188, width: 405, height: 30 },
+          metrics: { black: 82, nonGrey: 12150, nonWhite: 2301, hash: 2625769707 },
+        },
+        searchPanel: {
+          region: { x: 65, y: 175, width: 505, height: 140 },
+          metrics: { black: 606, nonGrey: 70700, nonWhite: 38491, hash: 3868158559 },
+        },
+      },
+      searchCaretLeft.dirtyRectsObserved,
+    );
+    assert.equal(searchCaretRight.lastInputEvent.type, 'keyup');
+    assert.equal(searchCaretRight.lastInputEvent.detail.key, 'ArrowRight');
+    assert.equal(searchCaretRight.lastInputEvent.detail.nsfb, 275);
+    assert.deepEqual(
+      searchCaretRight.metrics.searchInput,
+      { black: 82, nonGrey: 12150, nonWhite: 2301, hash: 2625769707 },
+      `expected ArrowRight to visibly restore the about:welcome search caret to the field end, got ${JSON.stringify(searchCaretRight)}`,
+    );
+
+    await page.keyboard.type('t');
+    const searchTextRestored = await waitForNetSurfRegionMetrics(
+      page,
+      {
+        searchInput: {
+          region: { x: 105, y: 188, width: 405, height: 30 },
+          metrics: { black: 117, nonGrey: 12150, nonWhite: 2337, hash: 1988530126 },
+        },
+        searchPanel: {
+          region: { x: 65, y: 175, width: 505, height: 140 },
+          metrics: { black: 641, nonGrey: 70700, nonWhite: 38527, hash: 2488143580 },
+        },
+      },
+      searchCaretRight.dirtyRectsObserved,
+    );
+    assert.equal(searchTextRestored.lastInputEvent.type, 'keyup');
+    assert.equal(searchTextRestored.lastInputEvent.detail.key, 't');
+    assert.equal(searchTextRestored.lastInputEvent.detail.nsfb, 116);
+    assert.deepEqual(
+      searchTextRestored.metrics.searchInput,
+      { black: 117, nonGrey: 12150, nonWhite: 2337, hash: 1988530126 },
+      `expected retyping the final about:welcome search glyph to restore the deterministic field raster before submit, got ${JSON.stringify(searchTextRestored)}`,
+    );
+
+    const beforeSearchSubmitDirtyRects = searchTextRestored.dirtyRectsObserved;
     await clickNetSurfCanvasPixel(canvasLocator, 315, 240);
     const searchSubmit = await waitForNetSurfRegionMetrics(
       page,
