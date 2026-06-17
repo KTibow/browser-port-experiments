@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       model:
-        description: Model to run, e.g. gpt-5.5 or palantir/gpt-5.5
+        description: Model to run
         required: false
         type: string
 
@@ -38,7 +38,7 @@ jobs:
 
       - name: Run Pi and push changes
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           PALANTIR_API_KEY: ${{ secrets.PALANTIR_API_KEY }}
           PI_CODING_AGENT_DIR: ${{ github.workspace }}/.pi
           PI_SKIP_VERSION_CHECK: 1
