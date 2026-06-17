@@ -80,6 +80,24 @@ Module['ready'] = new Promise(function(resolve, reject) {
       }
     
 
+      if (!Object.getOwnPropertyDescriptor(Module['ready'], '_netsurf_framebuffer_input_pending_count')) {
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_input_pending_count', { configurable: true, get: function() { abort('You are getting _netsurf_framebuffer_input_pending_count on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_input_pending_count', { configurable: true, set: function() { abort('You are setting _netsurf_framebuffer_input_pending_count on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+      }
+    
+
+      if (!Object.getOwnPropertyDescriptor(Module['ready'], '_netsurf_framebuffer_input_delivered_count')) {
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_input_delivered_count', { configurable: true, get: function() { abort('You are getting _netsurf_framebuffer_input_delivered_count on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_input_delivered_count', { configurable: true, set: function() { abort('You are setting _netsurf_framebuffer_input_delivered_count on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+      }
+    
+
+      if (!Object.getOwnPropertyDescriptor(Module['ready'], '_netsurf_framebuffer_input_dropped_count')) {
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_input_dropped_count', { configurable: true, get: function() { abort('You are getting _netsurf_framebuffer_input_dropped_count on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+        Object.defineProperty(Module['ready'], '_netsurf_framebuffer_input_dropped_count', { configurable: true, set: function() { abort('You are setting _netsurf_framebuffer_input_dropped_count on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
+      }
+    
+
       if (!Object.getOwnPropertyDescriptor(Module['ready'], '___stdio_exit')) {
         Object.defineProperty(Module['ready'], '___stdio_exit', { configurable: true, get: function() { abort('You are getting ___stdio_exit on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
         Object.defineProperty(Module['ready'], '___stdio_exit', { configurable: true, set: function() { abort('You are setting ___stdio_exit on the Promise object, instead of the instance. Use .then() to get called back with the instance, see the MODULARIZE docs in src/settings.js') } });
@@ -6865,6 +6883,15 @@ var _netsurf_framebuffer_push_mouse = Module["_netsurf_framebuffer_push_mouse"] 
 
 /** @type {function(...*):?} */
 var _netsurf_framebuffer_push_motion = Module["_netsurf_framebuffer_push_motion"] = createExportWrapper("netsurf_framebuffer_push_motion");
+
+/** @type {function(...*):?} */
+var _netsurf_framebuffer_input_pending_count = Module["_netsurf_framebuffer_input_pending_count"] = createExportWrapper("netsurf_framebuffer_input_pending_count");
+
+/** @type {function(...*):?} */
+var _netsurf_framebuffer_input_delivered_count = Module["_netsurf_framebuffer_input_delivered_count"] = createExportWrapper("netsurf_framebuffer_input_delivered_count");
+
+/** @type {function(...*):?} */
+var _netsurf_framebuffer_input_dropped_count = Module["_netsurf_framebuffer_input_dropped_count"] = createExportWrapper("netsurf_framebuffer_input_dropped_count");
 
 /** @type {function(...*):?} */
 var ___stdio_exit = Module["___stdio_exit"] = createExportWrapper("__stdio_exit");

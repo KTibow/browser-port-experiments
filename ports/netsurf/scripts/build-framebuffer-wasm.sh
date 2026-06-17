@@ -175,7 +175,7 @@ override NETSURF_FB_FONTLIB := internal
 override NETSURF_FB_FRONTEND := emscripten
 override NETSURF_FRAMEBUFFER_RESOURCES := /netsurf
 override NETSURF_FB_RESPATH := /netsurf
-LDFLAGS += -sUSE_ZLIB -sMODULARIZE=1 -sEXPORT_NAME=createNetSurfFrameBuffer -sENVIRONMENT=web,worker -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 -sEXPORTED_FUNCTIONS=["_netsurf_framebuffer_main","_netsurf_framebuffer_ptr","_netsurf_framebuffer_width","_netsurf_framebuffer_height","_netsurf_framebuffer_stride","_netsurf_framebuffer_push_key","_netsurf_framebuffer_push_mouse","_netsurf_framebuffer_push_motion"] -sEXPORTED_RUNTIME_METHODS=["ccall","cwrap","FS"]
+LDFLAGS += -sUSE_ZLIB -sMODULARIZE=1 -sEXPORT_NAME=createNetSurfFrameBuffer -sENVIRONMENT=web,worker -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 -sEXPORTED_FUNCTIONS=["_netsurf_framebuffer_main","_netsurf_framebuffer_ptr","_netsurf_framebuffer_width","_netsurf_framebuffer_height","_netsurf_framebuffer_stride","_netsurf_framebuffer_push_key","_netsurf_framebuffer_push_mouse","_netsurf_framebuffer_push_motion","_netsurf_framebuffer_input_pending_count","_netsurf_framebuffer_input_delivered_count","_netsurf_framebuffer_input_dropped_count"] -sEXPORTED_RUNTIME_METHODS=["ccall","cwrap","FS"]
 EOF
 printf 'LDFLAGS += --embed-file %s@/netsurf\n' "$RESOURCE_FS_DIR" >> "$WORKSPACE/netsurf/Makefile.config"
 
@@ -356,7 +356,7 @@ cat > "$PUBLIC_DIR/build-manifest.txt" <<'EOF'
 Built by ports/netsurf/scripts/build-framebuffer-wasm.sh
 Frontend: full NetSurf framebuffer with patched libnsfb Emscripten dirty-rect surface
 JS entry: createNetSurfFrameBuffer; page calls netsurf_framebuffer_main and paints coalesced nsfb_update dirty rectangles
-Input: canvas pointer, wheel, and expanded keyboard events queue into libnsfb/fbtk
+Input: canvas pointer, wheel, and expanded keyboard events queue into libnsfb/fbtk with delivered/drop counters
 Resources: embedded /netsurf Emscripten filesystem with Messages, Choices, default/internal/quirks/adblock CSS, welcome/credits/licence HTML, and core icons
 Networking: CURL disabled; offline about:, data:, file/resource fetchers only; future socket fetcher should use BrowserPortWisp from the app with no endpoint hard-coded in C/WASM
 EOF

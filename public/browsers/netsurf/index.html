@@ -81,6 +81,9 @@
         wispBridgeAvailable: false,
         inputBridge: 'waiting for WASM',
         inputEventsForwarded: 0,
+        inputEventsDelivered: 0,
+        inputEventsPending: 0,
+        inputEventsDropped: 0,
         lastInputEvent: null,
         inputEventHistory: [],
         compositionSession: { active: false, text: '', updates: 0, trusted: false },
@@ -115,7 +118,7 @@
           <dt>Surface</dt><dd>${framebufferState.surface}</dd>
           <dt>Geometry</dt><dd>${framebufferState.width || '?'} × ${framebufferState.height || '?'}; stride ${framebufferState.stride || '?'} bytes</dd>
           <dt>WASM pointer</dt><dd>${framebufferState.ptr ? `0x${framebufferState.ptr.toString(16)}` : 'waiting'}</dd>
-          <dt>Input bridge</dt><dd>${framebufferState.inputBridge}; forwarded ${framebufferState.inputEventsForwarded}${framebufferState.lastInputEvent ? `; last ${framebufferState.lastInputEvent.type}` : ''}</dd>
+          <dt>Input bridge</dt><dd>${framebufferState.inputBridge}; forwarded ${framebufferState.inputEventsForwarded}, delivered to fbtk ${framebufferState.inputEventsDelivered}, pending ${framebufferState.inputEventsPending}, dropped ${framebufferState.inputEventsDropped}${framebufferState.lastInputEvent ? `; last ${framebufferState.lastInputEvent.type}` : ''}</dd>
           <dt>Dirty rects</dt><dd>${framebufferState.dirtyRectsObserved} painted from ${framebufferState.dirtyRectCallbacksObserved} callbacks${framebufferState.lastDirtyRect ? `; last ${framebufferState.lastDirtyRect.join(',')}` : ''}</dd>
           <dt>Cursor hook</dt><dd>${framebufferState.cursor ? `${framebufferState.cursor.rect.join(',')} hotspot ${framebufferState.cursor.hotspot.join(',')}` : 'waiting for libnsfb cursor callback'}</dd>
           <dt>Resources</dt><dd>${framebufferState.resourcePackage ? `${framebufferState.resourcePackage.status}; ${framebufferState.resourcePackage.recognizableText.join(' / ')}` : 'waiting for embedded /netsurf package'}</dd>
@@ -310,6 +313,14 @@
         const pushKey = module.cwrap('netsurf_framebuffer_push_key', 'number', ['number', 'number']);
         const pushMouse = module.cwrap('netsurf_framebuffer_push_mouse', 'number', ['number', 'number']);
         const pushMotion = module.cwrap('netsurf_framebuffer_push_motion', 'number', ['number', 'number']);
+        const pendingCount = module.cwrap('netsurf_framebuffer_input_pending_count', 'number', []);
+        const deliveredCount = module.cwrap('netsurf_framebuffer_input_delivered_count', 'number', []);
+        const droppedCount = module.cwrap('netsurf_framebuffer_input_dropped_count', 'number', []);
+        const refreshInputQueueCounters = () => {
+          framebufferState.inputEventsDelivered = deliveredCount();
+          framebufferState.inputEventsPending = pendingCount();
+          framebufferState.inputEventsDropped = droppedCount();
+        };
         framebufferState.inputBridge = 'fbtk-event-queue';
         document.body.dataset.netsurfFramebufferInput = framebufferState.inputBridge;
         renderMetadata();
@@ -319,6 +330,7 @@
             framebufferState.inputEventsForwarded += 1;
             rememberInput(type, detail);
           }
+          refreshInputQueueCounters();
           if (framebufferState.inputEventsForwarded < 8 || framebufferState.inputEventsForwarded % 20 === 0) renderMetadata();
         };
         const forwardTextCharacters = (text, source, eventTypePrefix) => {
@@ -454,6 +466,11 @@
         textInputProxy.addEventListener('input', () => {
           textInputProxy.value = '';
         });
+
+        setInterval(() => {
+          refreshInputQueueCounters();
+          if (framebufferState.inputEventsForwarded > 0) renderMetadata();
+        }, 100);
       }
 
       async function boot() {

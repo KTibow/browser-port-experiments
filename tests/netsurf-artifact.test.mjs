@@ -31,6 +31,7 @@ test('NetSurf libnsfb Emscripten source patch is externalized and documents surf
   assert.match(source, /netsurf_emscripten_surface_cursor_js/);
   assert.match(source, /emscripten_async_call\(flush_pending_update/);
   assert.match(source, /netsurf_framebuffer_push_motion/);
+  assert.match(source, /netsurf_framebuffer_input_delivered_count/);
   assert.doesNotMatch(script, /surface\.write_text\(r'''/);
 });
 
@@ -57,6 +58,7 @@ test('NetSurf public page exposes the dirty-rect framebuffer/input bridge', asyn
   assert.match(page, /compositionupdate/);
   assert.match(page, /compositionend/);
   assert.match(page, /insertCompositionText/);
+  assert.match(page, /inputEventsDelivered/);
   assert.doesNotMatch(page, /requestAnimationFrame\(render\)/);
   assert.doesNotMatch(page, /nsfb-canvas-probe\.js/);
   assert.doesNotMatch(page, /wss:\/\/anura\.pro/i, 'public NetSurf page should not hard-code the shared Wisp endpoint');

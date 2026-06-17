@@ -28,6 +28,8 @@
 static nsfb_event_t event_queue[EVENT_QUEUE_LENGTH];
 static unsigned int event_read = 0;
 static unsigned int event_write = 0;
+static unsigned int event_dropped = 0;
+static unsigned int event_delivered = 0;
 
 #ifdef __EMSCRIPTEN__
 static nsfb_t *pending_update_nsfb = NULL;
@@ -39,6 +41,7 @@ static bool queue_push(nsfb_event_t event)
 {
     unsigned int next = (event_write + 1) % EVENT_QUEUE_LENGTH;
     if (next == event_read) {
+        event_dropped++;
         return false;
     }
     event_queue[event_write] = event;
@@ -53,6 +56,7 @@ static bool queue_pop(nsfb_event_t *event)
     }
     *event = event_queue[event_read];
     event_read = (event_read + 1) % EVENT_QUEUE_LENGTH;
+    event_delivered++;
     return true;
 }
 
@@ -259,6 +263,27 @@ int netsurf_framebuffer_push_motion(int x, int y)
     event.value.vector.y = y;
     event.value.vector.z = 0;
     return queue_push(event) ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_input_pending_count(void)
+{
+    if (event_write >= event_read) {
+        return (int)(event_write - event_read);
+    }
+    return (int)(EVENT_QUEUE_LENGTH - event_read + event_write);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_input_delivered_count(void)
+{
+    return (int)event_delivered;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int netsurf_framebuffer_input_dropped_count(void)
+{
+    return (int)event_dropped;
 }
 #endif
 

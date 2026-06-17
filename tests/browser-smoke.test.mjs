@@ -424,6 +424,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.equal(result.state.surface, 'libnsfb emscripten nsfb_t surface');
     assert.equal(result.inputDataset, 'fbtk-event-queue');
     assert.equal(result.canvasTabIndex, 0);
+    assert.equal(result.state.inputEventsDropped, 0, `expected no dropped libnsfb input events before interaction, got ${JSON.stringify(result)}`);
     assert.ok(result.state.ptr > 0, `expected exported nsfb_t buffer pointer, got ${JSON.stringify(result)}`);
     assert.ok(result.dirtyRectCount > 0, `expected at least one NetSurf dirty rect, got ${JSON.stringify(result)}`);
     assert.ok(result.state.dirtyRectsObserved > 0, `expected dirty rect state, got ${JSON.stringify(result)}`);
@@ -736,6 +737,7 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
 
     const beforeInputCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsForwarded);
     const beforeScrollDirtyRects = await page.evaluate(() => window.netsurfFramebufferState.dirtyRectsObserved);
+    const beforeDeliveredCount = await page.evaluate(() => window.netsurfFramebufferState.inputEventsDelivered);
     await canvasLocator.click({ position: { x: 320, y: 240 } });
     await page.mouse.wheel(0, 120);
     const wheelScrollSignatures = await waitForNetSurfWelcomeScrollSignatures(
@@ -786,19 +788,26 @@ test('NetSurf public page paints deterministic dirty-rect framebuffer pixels', {
     assert.ok(wheelScrollSignatures.dirtyRectsObserved > beforeScrollDirtyRects, `expected wheel scroll to preserve dirty-rect advancement, got ${JSON.stringify(wheelScrollSignatures)}`);
     await page.keyboard.press('a');
     const interaction = await page.waitForFunction(
-      (before) => {
+      ({ before, deliveredBefore }) => {
         const state = window.netsurfFramebufferState;
-        if (!state || state.inputEventsForwarded < before + 8) return null;
+        if (!state || state.inputEventsForwarded < before + 8 || state.inputEventsDelivered <= deliveredBefore) return null;
         return {
           before,
           after: state.inputEventsForwarded,
+          deliveredBefore,
+          deliveredAfter: state.inputEventsDelivered,
+          pending: state.inputEventsPending,
+          dropped: state.inputEventsDropped,
           lastInputEvent: state.lastInputEvent,
           dataset: document.body.dataset.netsurfFramebufferLastInput,
         };
       },
-      beforeInputCount,
+      { before: beforeInputCount, deliveredBefore: beforeDeliveredCount },
     ).then((handle) => handle.jsonValue());
+    assert.ok(beforeDeliveredCount >= 0);
     assert.ok(interaction.after >= beforeInputCount + 8, `expected deterministic forwarded click/wheel/key events, got ${JSON.stringify(interaction)}`);
+    assert.ok(interaction.deliveredAfter > interaction.deliveredBefore, `expected fbtk_event to consume forwarded libnsfb events, got ${JSON.stringify(interaction)}`);
+    assert.equal(interaction.dropped, 0, `expected no dropped libnsfb input events, got ${JSON.stringify(interaction)}`);
     assert.equal(interaction.lastInputEvent.type, 'keyup');
     assert.equal(interaction.lastInputEvent.detail.key, 'a');
     assert.equal(interaction.lastInputEvent.detail.nsfb, 97);
