@@ -181,6 +181,58 @@ test("beos boots BeOS 5 to the Tracker desktop @coldboot", async ({ page }, test
   }
 });
 
+// QNX 4.05 — the legendary 1.44 MB "demo disk": a complete POSIX real-time OS
+// with the Photon microGUI and the Voyager web browser, all on one floppy. It
+// cold-boots a 1.44 MB floppy (full download). The boot is a sequence of prompts
+// the registry's `autokeys` clears unattended: a text welcome + keyboard-locale
+// screen (spacebar), the Photon license (spacebar on the focused "I Accept"),
+// the Photon Display Configuration (F2 = Done), an Ethernet "Query a DHCP
+// Server" dialog (spacebar), and finally the Ethernet verify form. The QNX demo
+// binds Photon to a *serial* mouse that v86 doesn't emulate, so the PS/2 mouse
+// is unusable (absolute/relative clicks never reach Photon) — instead the form
+// is dismissed purely by keyboard: Shift+Tab x3 wraps focus backward from the IP
+// field to the "Done" button, and a final spacebar activates it. That closes the
+// dialog and AUTO-LAUNCHES Voyager on the local demo site. We don't assert on a
+// raw color count (every Photon dialog is 640x480 with ~6-10 sampled colors,
+// too close to separate reliably) — we wait for the demo homepage's large bright
+// YELLOW banner (~9000 yellow pixels), which is absent from every boot dialog
+// (0 yellow pixels). So this proves not merely "boots" but that the **Voyager
+// browser actually rendered a web page** — a real GUI browser engine drawing
+// HTML + images on screen. Boot to Voyager observed at ~128–130s; budget 220s.
+test("qnx boots the 1.44M demo to Voyager rendering a page @gui", async ({ page }, testInfo) => {
+  test.setTimeout(220_000);
+  await page.goto(`/run.html?os=qnx`, { waitUntil: "domcontentloaded" });
+  const start = Date.now();
+  let info = null;
+  while (Date.now() - start < 200_000) {
+    info = await page.evaluate(() => {
+      const c = document.querySelector("#screen_container canvas");
+      let yellow = 0;
+      if (c && c.width && c.height) {
+        const ctx = c.getContext("2d", { willReadFrequently: true });
+        const d = ctx.getImageData(0, 0, c.width, c.height).data;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i] > 180 && d[i + 1] > 180 && d[i + 2] < 120) yellow++;
+        }
+      }
+      return { width: c?.width || 0, height: c?.height || 0, yellow };
+    });
+    // 640x480 Photon graphical mode + the demo homepage's yellow banner.
+    if (info.width >= 600 && info.yellow >= 2000) break;
+    await page.waitForTimeout(2500);
+  }
+  expect(info.width).toBeGreaterThanOrEqual(600);
+  expect(info.yellow).toBeGreaterThanOrEqual(2000); // Voyager rendered the page
+  await expect(page.locator("#status")).toHaveText("Running");
+  await testInfo.attach("qnx.png", {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
+  if (process.env.SHOT_DIR) {
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/shot-qnx.png` });
+  }
+});
+
 // Damn Small Linux is a live CD: no saved state. Its Syslinux bootloader waits
 // at a `boot:` prompt, so the registry uses `autokeys` to press Enter; then it
 // loads X11. The full fluxbox desktop has far more colors than the 16-color

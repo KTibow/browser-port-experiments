@@ -82,6 +82,7 @@ the badge on the landing page.
 | android4 | AOSP Browser (WebKit) | ✅ boots | Android-x86 4.4 KitKat; full boot ~4-5min (streams ~250 MB), reaches the real launcher; Wisp connects; CI `@slow` (440s budget) |
 | beos | NetPositive (Be Inc.) | ✅ boots | BeOS 5 PE; cold-boots from a streamed disk (~90-100 MB to the desktop) in ~35-70s; `autokeys` clears the boot-loader's text "Partition Manager Menu"; full blue Tracker/Deskbar desktop verified; **Wisp connects on its own**; ne2k; CI `@coldboot` |
 | dsl | Dillo + Firefox | ✅ boots | live CD; Syslinux waits at `boot:` so registry uses `autokeys` to press Enter; X11 in ~50s; DHCP-over-Wisp connected; CI `@cdrom` |
+| qnx | Voyager (Photon) | ✅ boots | the legendary 1.44 MB "demo" floppy: full POSIX RTOS + Photon microGUI + Voyager browser on one floppy. `autokeys` clears every prompt (welcome/keyboard = space; Photon license = space; Display Config = **F2** via `scancodes`; Ethernet "Query DHCP" = space; verify form = **Shift+Tab×3 → Done** via `scancodes`, since the demo binds Photon to a serial mouse v86 can't drive). Done **auto-launches Voyager** which renders the local demo homepage (its embedded web server) — CI `@gui` asserts the page's yellow banner (~9000 px) so it proves the **browser rendered a page**, not just booted. ne2k is **send-only** here (`sawSend` yes, `sawRecv` no — NE1000 driver vs v86 NE2000), so live external sites won't load (same gotcha as Redox); the local demo does |
 | (buildroot) | links 2.29 (Twibright) | ✅ renders | `@browse`: a real text-browser **renders** a live page over Wisp (HTTP+HTTPS); also `@network` (DHCP + `wget`) |
 
 The end-to-end **Wisp networking is proven** (`@network` fetches a live page) and a
@@ -95,10 +96,15 @@ claim with a fully automated, deterministic test.
 ## Task queue (pick the top unclaimed item)
 
 > Status: Tasks 1, 2, 3, 5 and **6 are DONE**. The only open item is **Task 4**
-> (add more browsers) — still worthwhile (14 browsers, 10 verified; named
-> candidates remain, see the Task 4 notes). Future-work ideas: Task 3's GUI
-> page-load via a relative-mouse corner-pin trick; a modern-engine browser if a
-> CDN-streamable image exists (Icaros/AROS OWB is the strongest such candidate).
+> (add more browsers) — still worthwhile (**15 browsers, 11 verified**; named
+> candidates remain, see the Task 4 notes). Future-work ideas: a modern-engine
+> browser if a CDN-streamable image exists (Icaros/AROS OWB is the strongest such
+> candidate). **Note on the GUI-mouse blocker:** the QNX add (2026-06-18) showed
+> a useful workaround for *some* GUI guests — drive Photon/dialogs purely by
+> **keyboard** (Tab / Shift+Tab to move focus, space/Enter to activate, function
+> keys via the new `autokeys` `scancodes` field). The relative-mouse problem is
+> only truly blocking when an action *requires* the pointer (e.g. launching an
+> app from a desktop icon / taskbar with no keyboard path).
 
 When you start a task, append a line to the Log with your run id and "claimed".
 
@@ -197,6 +203,63 @@ single relay going unless there's clearly parallelizable, conflict-free work.
 
 ## Log
 
+- 2026-06-18 — **worker (run: qnx)**: **Completed** the QNX 4.05 add (now **15
+  browsers, 11 verified**). Verified for real (read the screenshots, not just a
+  green check):
+  • The 1.44 MB "Incredible 1.44M QNX Demo (Network v405)" floppy boots through a
+    chain of prompts that the runner's `autokeys` now clears unattended: a text
+    welcome + International Keyboard Selection (spacebar), then **Photon microGUI**
+    starts and shows a license dialog (spacebar = focused "I Accept"), a **Photon
+    Display Configuration** dialog (**F2** = Done), an Ethernet "Query a DHCP
+    Server" dialog (spacebar), and finally an Ethernet verify form. I read every
+    one of these screenshots — unmistakably real Photon GUI.
+  • **Cracked the GUI verify form without a mouse.** The QNX demo binds Photon to
+    a *serial* mouse v86 doesn't emulate, so the PS/2 cursor never moves (I
+    confirmed via the ps2 device flags that `use_mouse`/`enable_mouse_stream` are
+    true yet the cursor is frozen, and that the SAME bus-`mouse-delta` harness DID
+    move KolibriOS's cursor — so it's QNX-specific, not our harness). Keyboard
+    works, though: I traced focus with screenshots and found **Shift+Tab×3** wraps
+    focus backward from the IP field to the "Done" button; a final **spacebar**
+    activates it. To send the function/modifier keys I extended `autokeys` to take
+    a `scancodes` array (raw PS/2 set-1 make+break), e.g. F2 = `[60,188]`,
+    Shift+Tab = `[42,15,143,170]`.
+  • Activating "Done" **closes the dialog and AUTO-LAUNCHES the Voyager web
+    browser**, which renders the demo homepage (served by the floppy's *own*
+    embedded web server at `http://127.1`): I read the screenshot — the QNX RTOS
+    logo, the yellow "Build a more reliable world" banner, "THE INCREDIBLE 1.44M
+    DEMO", clickable links, the floppy image, status "Document: Done". A **real
+    GUI browser rendering a real web page** in the tab.
+  • New **`@gui`** test (`qnx boots the 1.44M demo to Voyager rendering a page`):
+    rather than a raw color count (every Photon dialog is 640x480 with only
+    ~6–10 sampled colors — too close to separate), it waits for the homepage's
+    large bright **yellow banner** (measured: **0** yellow px through every boot
+    dialog, **8936** once Voyager renders). So the test proves the browser drew a
+    page, not just that the OS booted. Passes in ~2.2m; **`@smoke` (deploy gate)
+    still green** and **`@ux` green** (9 passed together).
+  **Gotchas learned:** (1) **send-only networking here.** QNX `sawSend:true` but
+  `sawRecv:false` — it transmits over v86's NIC (so "Wisp: connected" lights up
+  from the *send*) but never receives, because the demo's **NE1000** (8-bit)
+  driver doesn't read v86's **NE2000** (16-bit) emulation; that's why "Query a
+  DHCP Server" came back all-zeros. Live *external* browsing is therefore
+  unavailable on this floppy (same class of gotcha as Redox's missing ne2k
+  driver); the local demo site still renders. The hint says so honestly. (2) The
+  graphical canvas stays 300x150 while QNX is in **text mode** (welcome/keyboard
+  screens) — don't conclude "stuck" from that; the text screen renders to a
+  separate element (same BeOS gotcha). (3) Typing into Photon IP-octet fields
+  garbles ("192" → "219") and doesn't auto-advance, so I did NOT try to fill the
+  net form — not worth it given receive is broken anyway. (4) `keyboard_send_text`
+  can't send function keys; the new `scancodes` autokeys path is the way.
+  **Queued for the next agent:** Icaros Desktop (AROS) — ships OWB (WebKit), the
+  strongest remaining modern-engine candidate (see Task 4 notes).
+- 2026-06-18 — **worker (run: qnx)**: claimed **Task 4** (add more browsers — the
+  only open queue item). Picked **QNX 4.05 (the famous 1.44 MB "demo-network"
+  floppy)** over the slow AROS/Icaros cold-boot: QNX's demo disk is one of the
+  most iconic tech demos ever — a complete POSIX OS with the **Photon microGUI**
+  desktop, the **Voyager** web browser, and a TCP/IP stack on a *single floppy*.
+  It's tiny (full download = 1.44 MB, like KolibriOS, so fast + low-risk) and the
+  CDN serves it (206 + ACAO:*, no Referer). copy.sh's profile is `fda:
+  qnx-demo-network-4.05.img` (1474560 B), default 128 MB RAM. Booting a probe +
+  reading the screenshot before flipping `tested`; NIC ne2k.
 - 2026-06-17 — **worker (run: beos)**: claimed **Task 4** (add more browsers — the
   only open queue item) and **added + verified BeOS 5** (now **14 browsers, 10
   verified**). Picked BeOS for novelty + a famous, beloved engine (NetPositive)

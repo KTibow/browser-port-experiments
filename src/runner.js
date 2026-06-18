@@ -268,13 +268,20 @@ async function main() {
     // Some guests (e.g. DSL's Syslinux) pause at an interactive boot prompt and
     // require a keypress to continue. `autokeys` lets the registry boot them
     // unattended: a list of { delay(ms after start), text } sent into the guest.
+    // An item may instead carry `scancodes` (an array of raw PS/2 set-1 codes,
+    // make + break) for keys that have no text form, e.g. function keys: QNX's
+    // Photon Display Configuration dialog is dismissed with F2 (= [0x3c,0xbc]).
     if (Array.isArray(cfg.autokeys)) {
       for (const k of cfg.autokeys) {
         const delay = Number(k.delay) || 0;
         const text = typeof k.text === "string" ? k.text : "";
-        if (!text) continue;
+        const scancodes = Array.isArray(k.scancodes) ? k.scancodes : null;
+        if (!text && !scancodes) continue;
         setTimeout(() => {
-          try { emulator.keyboard_send_text(text); } catch (e) { console.warn("autokeys", e); }
+          try {
+            if (scancodes) emulator.keyboard_send_scancodes(scancodes);
+            else emulator.keyboard_send_text(text);
+          } catch (e) { console.warn("autokeys", e); }
         }, delay);
       }
     }

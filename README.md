@@ -27,6 +27,7 @@ run their *native* browsers — so we get real, feature-complete engines:
 - **Haiku** → WebPositive (WebKit)
 - **BeOS 5** → NetPositive — the original Be Inc. multimedia OS
 - **ReactOS** → Windows-compatible shell
+- **QNX 4.05** → Voyager — the legendary 1.44 MB "demo disk" (Photon microGUI)
 - **SerenityOS** → Ladybird (independent LibWeb engine)
 - **9front** (Plan 9 fork) → Mothra + NetSurf
 - **Redox OS** (modern Rust microkernel + Orbital GUI) → NetSurf
@@ -101,6 +102,10 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
   its Orbital desktop)
 - `@coldboot` — BeOS 5 cold-boots from its disk image (streamed on demand) to the
   Tracker desktop (autokeys clears the boot-loader's partition menu)
+- `@gui` — QNX 4.05's 1.44 MB demo floppy boots (via keyboard-only `autokeys`,
+  including function keys/Shift+Tab over the new `scancodes` field) all the way to
+  the **Voyager browser rendering a page** (asserts the demo homepage's yellow
+  banner, which no boot dialog has)
 - `@cdrom` — Damn Small Linux boots its live CD into the X11 desktop
 - `@livecd` — SliTaz live-boots to its graphical Openbox desktop (Midori/WebKit)
 - `@slow` — Android 4.4 boots to the launcher (~4-5 min; streams ~250 MB)

@@ -188,6 +188,24 @@
       }
     },
     {
+      "id": "qnx",
+      "download": { "bytes": 1474560, "mode": "full" },
+      "name": "QNX 4.05",
+      "engine": "Voyager",
+      "era": "1999",
+      "blurb": "The legendary QNX 'demo disk': a complete POSIX real-time OS with the Photon microGUI desktop, the Voyager web browser, and a full TCP/IP stack — all on a single 1.44 MB floppy. One of the most famous tech demos ever, running in your tab.",
+      "hint": "It boots straight into the Voyager web browser, already rendering the famous 1.44M demo site served by the floppy's own embedded web server. (This demo's NE1000 driver is send-only over v86's emulated NIC, so live external sites won't load — but the whole point of the demo is what fits on one floppy.)",
+      "highlight": true,
+      "tested": "boots",
+      "config": {
+        "memory_size": 134217728,
+        "fda": { "url": "qnx-demo-network-4.05.img", "size": 1474560 },
+        "net_device_type": "ne2k",
+        "$autokeys_comment": "Unattended boot of the QNX demo through its prompts to the Voyager browser. Stages: spacebar past the text welcome + keyboard-selection screens; spacebar to accept the Photon license; F2 ([60,188]) to dismiss the Photon Display Configuration; spacebar to 'Query a DHCP Server'; then on the Ethernet verify form (focus starts on the IP field, mouse is unusable since the QNX demo binds Photon to a serial mouse v86 doesn't emulate) Shift+Tab ([42,15,143,170]) x3 wraps focus backward to the 'Done' button, and a final spacebar activates it — which closes the dialog and auto-launches Voyager on the local demo site.",
+        "autokeys": [{ "delay": 4000, "text": " " }, { "delay": 10000, "text": " " }, { "delay": 16000, "text": " " }, { "delay": 42000, "text": " " }, { "delay": 50000, "text": " " }, { "delay": 70000, "scancodes": [60, 188] }, { "delay": 80000, "scancodes": [60, 188] }, { "delay": 100000, "text": " " }, { "delay": 116000, "scancodes": [42, 15, 143, 170] }, { "delay": 120000, "scancodes": [42, 15, 143, 170] }, { "delay": 124000, "scancodes": [42, 15, 143, 170] }, { "delay": 128000, "text": " " }]
+      }
+    },
+    {
       "id": "slitaz",
       "download": { "bytes": 56573952, "mode": "full" },
       "name": "SliTaz GNU/Linux",
