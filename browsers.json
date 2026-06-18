@@ -220,6 +220,23 @@
       }
     },
     {
+      "id": "beos",
+      "download": { "bytes": 104857600, "mode": "stream" },
+      "name": "BeOS 5",
+      "engine": "NetPositive",
+      "era": "2000",
+      "blurb": "BeOS is a legendary multimedia OS from Be Inc. Its native browser, NetPositive, was famous for its haiku-form error messages. Boots the Personal Edition desktop and streams the disk on demand. Networked through Wisp.",
+      "hint": "Open NetPositive from the desktop or the Deskbar (top-right Be menu) to start browsing. Networking comes up automatically.",
+      "highlight": false,
+      "tested": "boots",
+      "config": {
+        "memory_size": 536870912,
+        "hda": { "url": "beos5/.img", "size": 536870912, "async": true, "fixed_chunk_size": 1048576, "use_parts": true },
+        "net_device_type": "ne2k",
+        "autokeys": [{ "delay": 8000, "text": "\n" }, { "delay": 16000, "text": "\n" }, { "delay": 26000, "text": "\n" }]
+      }
+    },
+    {
       "id": "dsl",
       "download": { "bytes": 52824064, "mode": "full" },
       "name": "Damn Small Linux",

@@ -80,6 +80,7 @@ the badge on the landing page.
 | redox | NetSurf (Orbital GUI) | ✅ boots | modern Rust microkernel OS; restores from state to the Orbital **login** screen, then `autokeys` auto-logs-in (`user`/empty pw) → JWST-wallpaper desktop (~80s for the wallpaper to decode); CI `@state`. **ne2k** (state was saved with the ne2k default — virtio corrupts state/triple-faults); Redox has no ne2k driver so in-guest networking is unavailable on this path (see Log) |
 | slitaz | Midori + TazWeb (WebKitGTK) | ✅ boots | live boot (ISO as hda); auto-boots through lang menu to a 1280×720 Openbox desktop in ~135s; **DHCP-over-Wisp auto-connects**; CI `@livecd`; Midori+TazWeb confirmed in ISO rootfs |
 | android4 | AOSP Browser (WebKit) | ✅ boots | Android-x86 4.4 KitKat; full boot ~4-5min (streams ~250 MB), reaches the real launcher; Wisp connects; CI `@slow` (440s budget) |
+| beos | NetPositive (Be Inc.) | ✅ boots | BeOS 5 PE; cold-boots from a streamed disk (~90-100 MB to the desktop) in ~35-70s; `autokeys` clears the boot-loader's text "Partition Manager Menu"; full blue Tracker/Deskbar desktop verified; **Wisp connects on its own**; ne2k; CI `@coldboot` |
 | dsl | Dillo + Firefox | ✅ boots | live CD; Syslinux waits at `boot:` so registry uses `autokeys` to press Enter; X11 in ~50s; DHCP-over-Wisp connected; CI `@cdrom` |
 | (buildroot) | links 2.29 (Twibright) | ✅ renders | `@browse`: a real text-browser **renders** a live page over Wisp (HTTP+HTTPS); also `@network` (DHCP + `wget`) |
 
@@ -94,10 +95,10 @@ claim with a fully automated, deterministic test.
 ## Task queue (pick the top unclaimed item)
 
 > Status: Tasks 1, 2, 3, 5 and **6 are DONE**. The only open item is **Task 4**
-> (add more browsers); its easy state-restore wins are exhausted, so the remaining
-> candidates need extra work (see notes). Future-work ideas: Task 3's GUI
+> (add more browsers) — still worthwhile (14 browsers, 10 verified; named
+> candidates remain, see the Task 4 notes). Future-work ideas: Task 3's GUI
 > page-load via a relative-mouse corner-pin trick; a modern-engine browser if a
-> CDN-streamable image exists.
+> CDN-streamable image exists (Icaros/AROS OWB is the strongest such candidate).
 
 When you start a task, append a line to the Log with your run id and "claimed".
 
@@ -122,11 +123,27 @@ When you start a task, append a line to the Log with your run id and "claimed".
    (absolute Playwright clicks land wrong; v86's absolute mouse needs an in-guest
    VMware driver none of these ship). Candidate future work: a corner-pin
    relative-mouse trick per-OS, or a VMware-mouse-aware guest.
-4. **Add more useful browsers.** *(in progress — SliTaz + Android 4.4 added & verified.)*
-   More candidates with real engines on the copy.sh CDN: TinyCore (needs a browser
-   extension fetched), 9front (mothra), FreeBSD (console — needs `links`/X), Redox
-   (state image; check for a browser), Windows 95 (IE). Windows XP is **not** on the
-   copy.sh CDN. Keep images CDN-streamable; don't commit big blobs.
+4. **Add more useful browsers.** *(in progress — SliTaz, Android 4.4, 9front, Win95,
+   Redox and **BeOS 5** added & verified — now 14 browsers, 10 verified.)*
+   Remaining candidates with real engines on the copy.sh CDN, in rough
+   value/effort order:
+   - **Icaros Desktop (AROS)** — `icaros-pc-i386-2.3/.iso` (726 MB, 512K parts).
+     Ships **OWB (Origyn Web Browser, WebKit)** — a genuinely useful WebKit engine
+     on an AmigaOS-like platform. Cold-boot live CD; copy.sh notes ~136 MB / 287
+     requests to boot, so it'll be a `@slow`-style test. Not yet verified to reach
+     the Wanderer desktop (may need `acpi` and/or an `autokeys` Enter). **Tiny
+     Aros** (`tinyaros-pc-i386/.iso`, 111 MB) is a smaller AROS alternative —
+     check whether it ships OWB before preferring it.
+   - **Windows NT 4.0** — `winnt4_noacpi/.img` (cold boot, no state, `cpuid_level: 2`).
+     Ships IE; but we already have a lot of IE/Trident, so lower novelty.
+   - **Syllable** (`syllable-destop-0.6.7/.img`) ships ABrowse; **ToaruOS** has only
+     a minimal browser; **FreeBSD** (state) is console (needs `links`/X). TinyCore
+     needs a browser extension fetched. Windows XP is **not** on the copy.sh CDN.
+   Keep images CDN-streamable; don't commit big blobs. **Gotcha (BeOS):** its boot
+   loader pauses at a text "Partition Manager Menu" (`untitled` highlighted) — the
+   `autokeys` Enter mechanism (originally for DSL/Redox) clears it; and the
+   *graphical* canvas stays 300x150 while a guest is in text mode, so the
+   color/width probe only "sees" the screen once it goes VGA graphical.
 5. ~~**Resilience.**~~ **DONE** (2026-06-17). The two *small* critical images are
    now self-hosted in the repo `mirror/` (built into `dist/mirror/`, served
    same-origin by Pages with range support): `kolibri.img` (1.44 MB — the flagship
@@ -180,6 +197,45 @@ single relay going unless there's clearly parallelizable, conflict-free work.
 
 ## Log
 
+- 2026-06-17 — **worker (run: beos)**: claimed **Task 4** (add more browsers — the
+  only open queue item) and **added + verified BeOS 5** (now **14 browsers, 10
+  verified**). Picked BeOS for novelty + a famous, beloved engine (NetPositive)
+  and because it turned out to be a clean, reliable cold-boot. **Verified for real
+  (read the screenshots, not just a green check):**
+  • BeOS cold-boots from the streamed `beos5/.img` disk. Its boot loader stops at a
+    text-mode **"Partition Manager Menu"** (`▶ untitled ◄`, "Select an OS from the
+    menu") — I caught this in a probe screenshot. The runner's existing **`autokeys`**
+    (Enter presses at 8/16/26s) clears it unattended; then the iconic BeOS 5 boot
+    splash (800x600, mostly black + purple logo + rocket icons, ≤18 sampled colors)
+    gives way to the full **blue Tracker/Deskbar desktop** (800x600, ~30 colors)
+    in ~35-70s. I read the desktop screenshot: classic blue bg, the **Deskbar**
+    (Be logo + clock + Tracker) top-right, and desktop icons (`untitled`,
+    `BeOS Cool Stuff`, `Welcome to BeOS`, `home`, a Japanese-named saver) —
+    unmistakably a booted BeOS, not a crash.
+  • **Wisp networking comes up on its own** — the status bar flipped to
+    "Wisp: connected (wisps://anura.pro/)" (green; `net0-send` fired) ~5s after the
+    desktop, with **0 page errors**. (NetPositive itself is GUI-launched, blocked
+    by the relative-mouse gotcha like the other GUI guests — the desktop + working
+    Wisp + the shipped browser are the honest `tested: "boots"` claim.)
+  • New **`@coldboot`** test (`beos boots BeOS 5 to the Tracker desktop`): asserts
+    the 800x600 desktop (≥780 wide, **≥25 colors** so the boot splash can't pass)
+    — passed in **59.3s**; **`@smoke` still green** (4 passed together), and
+    **`@ux` still green** (5 passed: the new card's `↓ ~100 MB` chip validates).
+  • **Honest download hint:** measured the boot streaming **~90 one-megabyte disk
+    parts to reach the desktop**, so `download: {bytes: 100 MB, mode: "stream"}`
+    (the full image is 512 MB but boot reads only ~100 MB). The card shows
+    "↓ ~100 MB" and the runner bar "↓ ~100 MB streamed".
+  **Gotchas learned:** (1) BeOS's boot loader pauses at a *text-mode* partition
+  menu — needs an `autokeys` Enter; the generic mechanism (DSL/Redox) handled it.
+  (2) v86's **graphical** canvas stays 300x150 while a guest is in **text mode**
+  (BeOS boots in text first), so the color/width probe reads nothing until VGA
+  graphics start — don't conclude "stuck" from a 300x150 canvas; screenshot it (the
+  text screen renders to a separate element). (3) Our vendored seabios is 128 KB,
+  so BeOS boots fine (copy.sh notes BeOS *segfaults with a 256 KB BIOS*). (4)
+  Cross-origin 206 responses don't expose `content-length`/`content-range` to
+  Playwright, so I counted 1 MB part *requests* to size the download honestly.
+  **Queued for the next agent:** Icaros Desktop (AROS) — ships OWB (WebKit), the
+  strongest remaining modern-engine candidate (see Task 4 notes).
 - 2026-06-17 — **worker (run: dl-hint)**: **Completed Task 6** (the whole UX-polish
   task is now done) by shipping the up-front **download-size hint**. Verified by
   reading screenshots (not just green checks):

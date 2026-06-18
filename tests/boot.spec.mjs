@@ -154,6 +154,33 @@ test("android4 boots to the Android launcher @slow", async ({ page }, testInfo) 
   }
 });
 
+// BeOS 5 (Personal Edition): a legendary multimedia OS; its native browser is
+// NetPositive. No saved state — it cold-boots from the disk image streamed on
+// demand (~90-100 MB to reach the desktop). Its boot loader stops at a text-mode
+// "Partition Manager Menu" ("untitled" highlighted, "Select an OS from the menu"),
+// so the registry uses `autokeys` to press Enter and continue. Then BeOS shows
+// its iconic boot splash (800x600, mostly black + a purple logo, <=18 sampled
+// colors) before the full blue Tracker/Deskbar desktop (800x600, ~30 colors).
+// We assert on the rich desktop, not the splash; Wisp networking also comes up
+// on its own (verified manually). Boot was observed in ~35-70s; budget generously.
+test("beos boots BeOS 5 to the Tracker desktop @coldboot", async ({ page }, testInfo) => {
+  const info = await bootAndWaitForScreen(page, "beos", {
+    timeoutMs: 220_000,
+    minWidth: 780,    // BeOS switches the canvas to 800x600
+    minColors: 25,    // full blue desktop (~30); boot splash stays <=18
+  });
+  expect(info.width).toBeGreaterThanOrEqual(780);
+  expect(info.colors).toBeGreaterThanOrEqual(25);
+  await expect(page.locator("#status")).toHaveText("Running");
+  await testInfo.attach("beos.png", {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
+  if (process.env.SHOT_DIR) {
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/shot-beos.png` });
+  }
+});
+
 // Damn Small Linux is a live CD: no saved state. Its Syslinux bootloader waits
 // at a `boot:` prompt, so the registry uses `autokeys` to press Enter; then it
 // loads X11. The full fluxbox desktop has far more colors than the 16-color

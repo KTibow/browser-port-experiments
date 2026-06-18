@@ -25,6 +25,7 @@ run their *native* browsers — so we get real, feature-complete engines:
 - **KolibriOS** → WebView (+ NetSurf) — tiny, boots in seconds
 - **Windows 95 / 98 / 2000 / ME** → Internet Explorer (Trident/MSHTML)
 - **Haiku** → WebPositive (WebKit)
+- **BeOS 5** → NetPositive — the original Be Inc. multimedia OS
 - **ReactOS** → Windows-compatible shell
 - **SerenityOS** → Ladybird (independent LibWeb engine)
 - **9front** (Plan 9 fork) → Mothra + NetSurf
@@ -98,6 +99,8 @@ npx playwright test --grep @smoke   # quick: landing + KolibriOS boot
 - `@state` — saved-state OSes resume a booted desktop (Win95/98/2000/ME, Haiku,
   ReactOS, SerenityOS, 9front; and Redox, which auto-logs-in via `autokeys` to
   its Orbital desktop)
+- `@coldboot` — BeOS 5 cold-boots from its disk image (streamed on demand) to the
+  Tracker desktop (autokeys clears the boot-loader's partition menu)
 - `@cdrom` — Damn Small Linux boots its live CD into the X11 desktop
 - `@livecd` — SliTaz live-boots to its graphical Openbox desktop (Midori/WebKit)
 - `@slow` — Android 4.4 boots to the launcher (~4-5 min; streams ~250 MB)
